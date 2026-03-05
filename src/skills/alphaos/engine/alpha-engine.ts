@@ -34,6 +34,8 @@ interface EngineOptions {
   liveEnabled: boolean;
   autoPromoteToLive: boolean;
   quoteStaleMs?: number;
+  opportunityDedupTtlMs?: number;
+  opportunityDedupMinEdgeDeltaBps?: number;
   paperStartingBalanceUsd: number;
   liveBalanceUsd: number;
   riskPolicy: RiskPolicy;
@@ -109,6 +111,9 @@ export class AlphaEngine {
   private consecutiveFailures = 0;
   private circuitBreakerUntil = 0;
   private readonly quoteStaleMs: number;
+  private readonly opportunityDedupTtlMs: number;
+  private readonly opportunityDedupMinEdgeDeltaBps: number;
+  private readonly recentOpportunityKeys = new Map<string, { seenAtMs: number; grossEdgeBps: number }>();
 
   constructor(
     private readonly manifest: SkillManifest,
@@ -125,6 +130,14 @@ export class AlphaEngine {
     this.mode = options.startMode;
     this.desiredMode = options.liveEnabled ? "live" : options.startMode;
     this.quoteStaleMs = Math.max(1, Math.floor(options.quoteStaleMs ?? 1000));
+    this.opportunityDedupTtlMs = Math.max(
+      0,
+      Math.floor(options.opportunityDedupTtlMs ?? Math.max(options.intervalMs, 1000)),
+    );
+    this.opportunityDedupMinEdgeDeltaBps = Math.max(
+      0,
+      options.opportunityDedupMinEdgeDeltaBps ?? 2,
+    );
     this.store.ensureBalanceBaseline("paper", options.paperStartingBalanceUsd);
     this.store.ensureBalanceBaseline("live", options.liveBalanceUsd);
   }
@@ -418,12 +431,69 @@ export class AlphaEngine {
         nowIso: new Date().toISOString(),
       });
       for (const opportunity of opportunities) {
+        if (this.shouldSkipDuplicateOpportunity(plugin.id, opportunity)) {
+          continue;
+        }
         await this.processOpportunity(plugin, opportunity, quotes);
       }
     } catch (error) {
       this.logger.error({ err: error, strategy: plugin.id }, "plugin scan failed");
       this.store.insertAlert("error", "plugin_scan_failure", `${plugin.id}: ${String(error)}`);
     }
+  }
+
+  private shouldSkipDuplicateOpportunity(strategyId: string, opportunity: Opportunity): boolean {
+    if (this.opportunityDedupTtlMs <= 0) {
+      return false;
+    }
+
+    const nowMs = Date.now();
+    this.pruneDedupCache(nowMs);
+    const key = this.buildOpportunityDedupKey(strategyId, opportunity, nowMs);
+    const existing = this.recentOpportunityKeys.get(key);
+
+    if (
+      existing &&
+      nowMs - existing.seenAtMs <= this.opportunityDedupTtlMs &&
+      Math.abs(existing.grossEdgeBps - opportunity.grossEdgeBps) < this.opportunityDedupMinEdgeDeltaBps
+    ) {
+      return true;
+    }
+
+    this.recentOpportunityKeys.set(key, {
+      seenAtMs: nowMs,
+      grossEdgeBps: opportunity.grossEdgeBps,
+    });
+    return false;
+  }
+
+  private pruneDedupCache(nowMs: number): void {
+    if (this.recentOpportunityKeys.size < 512) {
+      return;
+    }
+
+    const staleBefore = nowMs - this.opportunityDedupTtlMs * 2;
+    for (const [key, value] of this.recentOpportunityKeys) {
+      if (value.seenAtMs < staleBefore) {
+        this.recentOpportunityKeys.delete(key);
+      }
+    }
+  }
+
+  private buildOpportunityDedupKey(strategyId: string, opportunity: Opportunity, nowMs: number): string {
+    const timeBucket =
+      this.opportunityDedupTtlMs > 0 ? Math.floor(nowMs / this.opportunityDedupTtlMs) : nowMs;
+    const buyBucket = this.toPriceBucket(opportunity.buyPrice);
+    const sellBucket = this.toPriceBucket(opportunity.sellPrice);
+    return `${strategyId}|${opportunity.pair}|${opportunity.buyDex}|${opportunity.sellDex}|${buyBucket}|${sellBucket}|${timeBucket}`;
+  }
+
+  private toPriceBucket(price: number): number {
+    if (!Number.isFinite(price) || price <= 0) {
+      return 0;
+    }
+    const step = Math.max(0.000001, price * 0.0005);
+    return Math.round(price / step);
   }
 
   private shouldDegradeToPaper(mode: ExecutionMode, trade: TradeResult): boolean {

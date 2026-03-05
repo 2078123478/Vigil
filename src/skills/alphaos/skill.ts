@@ -138,6 +138,8 @@ export function createAlphaOsSkill(config: AlphaOsConfig, logger: Logger) {
       liveEnabled: config.liveEnabled,
       autoPromoteToLive: config.autoPromoteToLive,
       quoteStaleMs: config.quoteStaleMs,
+      opportunityDedupTtlMs: config.opportunityDedupTtlMs,
+      opportunityDedupMinEdgeDeltaBps: config.opportunityDedupMinEdgeDeltaBps,
       paperStartingBalanceUsd: config.paperStartingBalanceUsd,
       liveBalanceUsd: config.liveBalanceUsd,
       riskPolicy: config.riskPolicy,

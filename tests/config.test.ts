@@ -64,4 +64,13 @@ describe("loadConfig security defaults", () => {
     expect(config.wsReconnectMs).toBe(750);
     expect(config.quoteStaleMs).toBe(850);
   });
+
+  it("reads opportunity dedup configuration from env", () => {
+    process.env.OPPORTUNITY_DEDUP_TTL_MS = "12000";
+    process.env.OPPORTUNITY_DEDUP_MIN_EDGE_DELTA_BPS = "3.5";
+
+    const config = loadConfig();
+    expect(config.opportunityDedupTtlMs).toBe(12000);
+    expect(config.opportunityDedupMinEdgeDeltaBps).toBe(3.5);
+  });
 });

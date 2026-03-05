@@ -111,6 +111,8 @@ export interface AlphaOsConfig {
   wsUrl: string;
   wsReconnectMs: number;
   quoteStaleMs: number;
+  opportunityDedupTtlMs: number;
+  opportunityDedupMinEdgeDeltaBps: number;
   riskPolicy: RiskPolicy;
   strategyProfileDefaults: Record<string, unknown>;
 }
@@ -162,6 +164,8 @@ export function loadConfig(): AlphaOsConfig {
     wsUrl: process.env.WS_URL ?? "",
     wsReconnectMs: readNumber("WS_RECONNECT_MS", 2000),
     quoteStaleMs: readNumber("QUOTE_STALE_MS", 1000),
+    opportunityDedupTtlMs: readNumber("OPPORTUNITY_DEDUP_TTL_MS", 5000),
+    opportunityDedupMinEdgeDeltaBps: readNumber("OPPORTUNITY_DEDUP_MIN_EDGE_DELTA_BPS", 2),
     riskPolicy: {
       minNetEdgeBpsPaper: readNumber("MIN_NET_EDGE_BPS_PAPER", 45),
       minNetEdgeBpsLive: readNumber("MIN_NET_EDGE_BPS_LIVE", 60),
