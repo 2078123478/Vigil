@@ -52,18 +52,6 @@ function defaultWsFactory(url: string): WsSocketLike | null {
   return new wsCtor(url);
 }
 
-function median(values: number[]): number | null {
-  if (values.length === 0) {
-    return null;
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) {
-    return (sorted[middle - 1] + sorted[middle]) / 2;
-  }
-  return sorted[middle];
-}
-
 function parseQuote(payload: unknown): Quote | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
@@ -356,15 +344,7 @@ export class MarketWatch {
     const medians = this.buildPairMedians(quotes);
     const accepted: Quote[] = [];
     for (const quote of quotes) {
-      const latencyMs = this.getLatencyMs(quote.ts);
-      const fresh = latencyMs !== null && latencyMs >= 0 && latencyMs <= this.quoteStaleMs;
-      this.store.recordQuoteQuality({ stale: !fresh, latencyMs });
-      if (!fresh) {
-        this.store.insertAlert(
-          "warn",
-          "quote_stale",
-          `${source} quote stale ${quote.pair}@${quote.dex} ts=${quote.ts}`,
-        );
+      if (!this.validateQuote(quote, source)) {
         continue;
       }
 
@@ -375,11 +355,7 @@ export class MarketWatch {
       }
 
       this.anomalyStreak = 0;
-      const pairDex = this.makePairDexKey(quote.pair, quote.dex);
-      const tsMs = Date.parse(quote.ts);
-      this.lastTsByPairDex.set(pairDex, tsMs);
-      this.latestByPairDex.set(pairDex, quote);
-      this.store.insertMarketSnapshot(quote);
+      this.acceptQuote(quote);
       accepted.push(quote);
     }
     return accepted;
@@ -389,27 +365,25 @@ export class MarketWatch {
     const pairDex = this.makePairDexKey(quote.pair, quote.dex);
     const tsMs = Date.parse(quote.ts);
     const prevTs = this.lastTsByPairDex.get(pairDex);
+
     if (!Number.isFinite(tsMs)) {
       return `invalid timestamp for ${quote.pair}@${quote.dex}`;
     }
-    if (prevTs !== undefined && tsMs < prevTs) {
-      return `timestamp rollback ${quote.pair}@${quote.dex} ${quote.ts}`;
-    }
-    if (prevTs !== undefined && tsMs === prevTs) {
+    if (prevTs !== undefined && tsMs <= prevTs) {
+      if (tsMs < prevTs) {
+        return `timestamp rollback ${quote.pair}@${quote.dex} ${quote.ts}`;
+      }
       return `duplicate quote ${quote.pair}@${quote.dex} ts=${quote.ts}`;
     }
 
     const midpoint = (quote.bid + quote.ask) / 2;
-    if (
-      pairMedian !== null &&
-      pairMedian > 0 &&
-      Number.isFinite(midpoint) &&
-      Math.abs(midpoint - pairMedian) / pairMedian > this.anomalyDeviationPct
-    ) {
-      const deviationPct = (Math.abs(midpoint - pairMedian) / pairMedian) * 100;
-      return `price anomaly ${quote.pair}@${quote.dex} deviation=${deviationPct.toFixed(2)}%`;
+    const deviation = this.getDeviationRatio(midpoint, pairMedian);
+    if (deviation === null || deviation <= this.anomalyDeviationPct) {
+      return null;
     }
-    return null;
+
+    const deviationPct = deviation * 100;
+    return `price anomaly ${quote.pair}@${quote.dex} deviation=${deviationPct.toFixed(2)}%`;
   }
 
   private markAnomaly(message: string): void {
@@ -448,9 +422,53 @@ export class MarketWatch {
 
     const result = new Map<string, number | null>();
     for (const [pair, mids] of byPair.entries()) {
-      result.set(pair, median(mids));
+      result.set(pair, this.calculateMedian(mids));
     }
     return result;
+  }
+
+  private validateQuote(quote: Quote, source: "poll" | "ws"): boolean {
+    const latencyMs = this.getLatencyMs(quote.ts);
+    const fresh = latencyMs !== null && latencyMs >= 0 && latencyMs <= this.quoteStaleMs;
+    this.store.recordQuoteQuality({ stale: !fresh, latencyMs });
+    if (fresh) {
+      return true;
+    }
+
+    this.store.insertAlert(
+      "warn",
+      "quote_stale",
+      `${source} quote stale ${quote.pair}@${quote.dex} ts=${quote.ts}`,
+    );
+    return false;
+  }
+
+  private calculateMedian(values: number[]): number | null {
+    if (values.length === 0) {
+      return null;
+    }
+
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+      return (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+    return sorted[middle];
+  }
+
+  private getDeviationRatio(midpoint: number, pairMedian: number | null): number | null {
+    if (pairMedian === null || pairMedian <= 0 || !Number.isFinite(midpoint)) {
+      return null;
+    }
+    return Math.abs(midpoint - pairMedian) / pairMedian;
+  }
+
+  private acceptQuote(quote: Quote): void {
+    const pairDex = this.makePairDexKey(quote.pair, quote.dex);
+    const tsMs = Date.parse(quote.ts);
+    this.lastTsByPairDex.set(pairDex, tsMs);
+    this.latestByPairDex.set(pairDex, quote);
+    this.store.insertMarketSnapshot(quote);
   }
 
   private getLatestQuotes(pair: string, dexes: string[]): Quote[] {
