@@ -3,6 +3,7 @@ import { OnchainOsClient } from "./onchainos-client";
 import { StateStore } from "./state-store";
 
 const DEFAULT_QUOTE_STALE_MS = 1000;
+const DEFAULT_FUTURE_TS_TOLERANCE_MS = 1500;
 const DEFAULT_WS_RECONNECT_MS = 2000;
 const DEFAULT_WS_HEARTBEAT_MS = 15000;
 const DEFAULT_ANOMALY_DEVIATION_PCT = 0.05;
@@ -39,6 +40,7 @@ export interface MarketWatchOptions {
   wsReconnectMs?: number;
   wsHeartbeatMs?: number;
   quoteStaleMs?: number;
+  futureTsToleranceMs?: number;
   anomalyDeviationPct?: number;
   anomalyStreakAlertThreshold?: number;
   wsFactory?: WsFactory;
@@ -67,6 +69,9 @@ function parseQuote(payload: unknown): Quote | null {
   const bid = Number(input.bid);
   const ask = Number(input.ask);
   if (!Number.isFinite(bid) || !Number.isFinite(ask)) {
+    return null;
+  }
+  if (bid <= 0 || ask <= 0 || ask < bid) {
     return null;
   }
   const gasUsd = Number(input.gasUsd);
@@ -287,6 +292,7 @@ export class WsMarketWatch {
 
 export class MarketWatch {
   private readonly quoteStaleMs: number;
+  private readonly futureTsToleranceMs: number;
   private readonly anomalyDeviationPct: number;
   private readonly anomalyStreakAlertThreshold: number;
   private readonly ws: WsMarketWatch | null;
@@ -300,6 +306,10 @@ export class MarketWatch {
     options: MarketWatchOptions = {},
   ) {
     this.quoteStaleMs = Math.max(1, Math.floor(options.quoteStaleMs ?? DEFAULT_QUOTE_STALE_MS));
+    this.futureTsToleranceMs = Math.max(
+      0,
+      Math.floor(options.futureTsToleranceMs ?? DEFAULT_FUTURE_TS_TOLERANCE_MS),
+    );
     this.anomalyDeviationPct = Math.max(
       0.01,
       Math.min(0.5, options.anomalyDeviationPct ?? DEFAULT_ANOMALY_DEVIATION_PCT),
@@ -505,7 +515,11 @@ export class MarketWatch {
     if (!Number.isFinite(tsMs)) {
       return null;
     }
-    return Math.max(0, Date.now() - tsMs);
+    const nowMs = Date.now();
+    if (tsMs > nowMs + this.futureTsToleranceMs) {
+      return null;
+    }
+    return Math.max(0, nowMs - tsMs);
   }
 
   private makePairDexKey(pair: string, dex: string): string {
