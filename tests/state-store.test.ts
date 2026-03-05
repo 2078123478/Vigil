@@ -229,4 +229,18 @@ describe("StateStore P0 safety", () => {
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("records stale quote count and average quote latency", () => {
+    const { dir, store } = createStore("alphaos-state-");
+    store.recordQuoteQuality({ stale: false, latencyMs: 100 });
+    store.recordQuoteQuality({ stale: true, latencyMs: 400 });
+    store.recordQuoteQuality({ stale: true, latencyMs: null });
+
+    const metrics = store.getTodayMetrics();
+    expect(metrics.staleQuotes).toBe(2);
+    expect(metrics.avgQuoteLatencyMs).toBe(250);
+
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

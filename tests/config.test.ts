@@ -51,4 +51,17 @@ describe("loadConfig security defaults", () => {
     expect(config.avgLatencyMsDefault).toBe(320);
     expect(config.evalNotionalUsdDefault).toBe(1800);
   });
+
+  it("reads websocket and quote freshness configuration from env", () => {
+    process.env.WS_ENABLED = "true";
+    process.env.WS_URL = "wss://quotes.example/ws";
+    process.env.WS_RECONNECT_MS = "750";
+    process.env.QUOTE_STALE_MS = "850";
+
+    const config = loadConfig();
+    expect(config.wsEnabled).toBe(true);
+    expect(config.wsUrl).toBe("wss://quotes.example/ws");
+    expect(config.wsReconnectMs).toBe(750);
+    expect(config.quoteStaleMs).toBe(850);
+  });
 });

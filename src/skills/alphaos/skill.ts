@@ -98,10 +98,16 @@ export function createAlphaOsSkill(config: AlphaOsConfig, logger: Logger) {
     privateRpcUrl: config.onchainPrivateRpcUrl,
     relayUrl: config.onchainRelayUrl,
     usePrivateSubmit: config.onchainUsePrivateSubmit,
+    quoteStaleMs: config.quoteStaleMs,
     store,
   });
 
-  const market = new MarketWatch(onchain, store);
+  const market = new MarketWatch(onchain, store, {
+    quoteStaleMs: config.quoteStaleMs,
+    wsEnabled: config.wsEnabled,
+    wsUrl: config.wsUrl,
+    wsReconnectMs: config.wsReconnectMs,
+  });
   const simulator = new Simulator({
     slippageBps: config.slippageBps,
     takerFeeBps: config.takerFeeBps,
@@ -127,6 +133,7 @@ export function createAlphaOsSkill(config: AlphaOsConfig, logger: Logger) {
       startMode: config.startMode,
       liveEnabled: config.liveEnabled,
       autoPromoteToLive: config.autoPromoteToLive,
+      quoteStaleMs: config.quoteStaleMs,
       paperStartingBalanceUsd: config.paperStartingBalanceUsd,
       liveBalanceUsd: config.liveBalanceUsd,
       riskPolicy: config.riskPolicy,

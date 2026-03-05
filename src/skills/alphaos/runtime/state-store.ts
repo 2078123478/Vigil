@@ -125,6 +125,14 @@ export class StateStore {
         PRIMARY KEY(day, mode)
       );
 
+      CREATE TABLE IF NOT EXISTS quote_quality_daily (
+        day TEXT PRIMARY KEY,
+        total_quotes INTEGER NOT NULL,
+        stale_quotes INTEGER NOT NULL,
+        latency_sum_ms REAL NOT NULL,
+        latency_samples INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS alerts (
         id TEXT PRIMARY KEY,
         level TEXT NOT NULL,
@@ -417,6 +425,28 @@ export class StateStore {
       .run(crypto.randomUUID(), input.pair, input.dex, input.bid, input.ask, input.ts);
   }
 
+  recordQuoteQuality(input: { stale: boolean; latencyMs: number | null; ts?: string }): void {
+    const day = input.ts ? utcDay(new Date(input.ts)) : utcDay();
+    this.alphaDb
+      .prepare(
+        `INSERT INTO quote_quality_daily (
+          day, total_quotes, stale_quotes, latency_sum_ms, latency_samples
+        )
+        VALUES (?, 1, ?, ?, ?)
+        ON CONFLICT(day) DO UPDATE SET
+          total_quotes = quote_quality_daily.total_quotes + 1,
+          stale_quotes = quote_quality_daily.stale_quotes + excluded.stale_quotes,
+          latency_sum_ms = quote_quality_daily.latency_sum_ms + excluded.latency_sum_ms,
+          latency_samples = quote_quality_daily.latency_samples + excluded.latency_samples`,
+      )
+      .run(
+        day,
+        input.stale ? 1 : 0,
+        input.latencyMs ?? 0,
+        input.latencyMs === null ? 0 : 1,
+      );
+  }
+
   insertOpportunity(input: Opportunity, estCostUsd: number, estNetUsd: number, status = "detected"): void {
     this.alphaDb
       .prepare(
@@ -528,6 +558,16 @@ export class StateStore {
       )
       .all(day) as Array<{ ts: string; netUsd: number }>;
 
+    const quoteQualityRow = this.alphaDb
+      .prepare(
+        `SELECT stale_quotes AS staleQuotes,
+                latency_sum_ms AS latencySumMs,
+                latency_samples AS latencySamples
+         FROM quote_quality_daily
+         WHERE day = ?`,
+      )
+      .get(day) as { staleQuotes: number; latencySumMs: number; latencySamples: number } | undefined;
+
     return {
       day,
       opportunities: oppRow.count,
@@ -535,6 +575,11 @@ export class StateStore {
       netUsd: pnlRows.net,
       grossUsd: pnlRows.gross,
       feeUsd: pnlRows.fee,
+      staleQuotes: quoteQualityRow?.staleQuotes ?? 0,
+      avgQuoteLatencyMs:
+        quoteQualityRow && quoteQualityRow.latencySamples > 0
+          ? quoteQualityRow.latencySumMs / quoteQualityRow.latencySamples
+          : 0,
       curve: curveRows.reverse(),
     };
   }

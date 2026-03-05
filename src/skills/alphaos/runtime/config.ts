@@ -107,6 +107,10 @@ export interface AlphaOsConfig {
   avgLatencyMsDefault: number;
   evalNotionalUsdDefault: number;
   autoPromoteToLive: boolean;
+  wsEnabled: boolean;
+  wsUrl: string;
+  wsReconnectMs: number;
+  quoteStaleMs: number;
   riskPolicy: RiskPolicy;
   strategyProfileDefaults: Record<string, unknown>;
 }
@@ -154,6 +158,10 @@ export function loadConfig(): AlphaOsConfig {
     avgLatencyMsDefault: readNumber("AVG_LATENCY_MS_DEFAULT", 250),
     evalNotionalUsdDefault: readNumber("EVAL_NOTIONAL_USD_DEFAULT", 1000),
     autoPromoteToLive: readBoolean("AUTO_PROMOTE_TO_LIVE", false),
+    wsEnabled: readBoolean("WS_ENABLED", false),
+    wsUrl: process.env.WS_URL ?? "",
+    wsReconnectMs: readNumber("WS_RECONNECT_MS", 2000),
+    quoteStaleMs: readNumber("QUOTE_STALE_MS", 1000),
     riskPolicy: {
       minNetEdgeBpsPaper: readNumber("MIN_NET_EDGE_BPS_PAPER", 45),
       minNetEdgeBpsLive: readNumber("MIN_NET_EDGE_BPS_LIVE", 60),

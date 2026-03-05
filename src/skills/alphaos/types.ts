@@ -123,6 +123,8 @@ export interface TodayMetrics {
   netUsd: number;
   grossUsd: number;
   feeUsd: number;
+  staleQuotes: number;
+  avgQuoteLatencyMs: number;
   curve: Array<{ ts: string; netUsd: number }>;
 }
 

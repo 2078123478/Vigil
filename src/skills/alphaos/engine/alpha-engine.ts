@@ -32,6 +32,7 @@ interface EngineOptions {
   startMode: ExecutionMode;
   liveEnabled: boolean;
   autoPromoteToLive: boolean;
+  quoteStaleMs?: number;
   paperStartingBalanceUsd: number;
   liveBalanceUsd: number;
   riskPolicy: RiskPolicy;
@@ -106,6 +107,7 @@ export class AlphaEngine {
   private running = false;
   private consecutiveFailures = 0;
   private circuitBreakerUntil = 0;
+  private readonly quoteStaleMs: number;
 
   constructor(
     private readonly manifest: SkillManifest,
@@ -121,6 +123,7 @@ export class AlphaEngine {
   ) {
     this.mode = options.startMode;
     this.desiredMode = options.liveEnabled ? "live" : options.startMode;
+    this.quoteStaleMs = Math.max(1, Math.floor(options.quoteStaleMs ?? 1000));
     this.store.ensureBalanceBaseline("paper", options.paperStartingBalanceUsd);
     this.store.ensureBalanceBaseline("live", options.liveBalanceUsd);
   }
@@ -228,17 +231,36 @@ export class AlphaEngine {
       }
 
       const quotes = await this.marketWatch.fetch(this.options.pair, this.options.dexes);
+      const freshQuotes = quotes.filter((quote) => {
+        const quoteMs = Date.parse(quote.ts);
+        if (!Number.isFinite(quoteMs)) {
+          this.store.recordQuoteQuality({ stale: true, latencyMs: null });
+          this.store.insertAlert("warn", "stale_quote_engine", `invalid quote ts ${quote.pair}@${quote.dex}`);
+          return false;
+        }
+        const latencyMs = Math.max(0, Date.now() - quoteMs);
+        const fresh = latencyMs <= this.quoteStaleMs;
+        if (!fresh) {
+          this.store.recordQuoteQuality({ stale: true, latencyMs });
+          this.store.insertAlert(
+            "warn",
+            "stale_quote_engine",
+            `stale quote dropped ${quote.pair}@${quote.dex} latencyMs=${latencyMs}`,
+          );
+        }
+        return fresh;
+      });
 
       for (const plugin of this.plugins) {
         try {
           const opportunities = await plugin.scan({
             pair: this.options.pair,
-            quotes,
+            quotes: freshQuotes,
             nowIso: new Date().toISOString(),
           });
 
           for (const opp of opportunities) {
-            await this.processOpportunity(plugin, opp, quotes);
+            await this.processOpportunity(plugin, opp, freshQuotes);
           }
         } catch (error) {
           this.logger.error({ err: error, strategy: plugin.id }, "plugin scan failed");

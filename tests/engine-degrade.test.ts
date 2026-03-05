@@ -6,7 +6,7 @@ import { AlphaEngine } from "../src/skills/alphaos/engine/alpha-engine";
 import { RiskEngine } from "../src/skills/alphaos/runtime/risk-engine";
 import { Simulator } from "../src/skills/alphaos/runtime/simulator";
 import { StateStore } from "../src/skills/alphaos/runtime/state-store";
-import type { SimulationResult, StrategyPlugin } from "../src/skills/alphaos/types";
+import type { Quote, SimulationResult, StrategyPlugin } from "../src/skills/alphaos/types";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -411,6 +411,101 @@ describe("AlphaEngine degraded-to-paper", () => {
     const response = engine.requestMode("live");
     expect(response.ok).toBe(false);
     expect(response.reasons.some((reason) => reason.includes("permission failures"))).toBe(true);
+
+    store.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("applies freshness gate again in engine consumption", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alphaos-engine-fresh-"));
+    const store = new StateStore(tempDir);
+    let seenQuotes: Quote[] = [];
+
+    const plugin: StrategyPlugin = {
+      id: "dex-arbitrage",
+      version: "1.0.0",
+      async scan(ctx) {
+        seenQuotes = ctx.quotes;
+        return [];
+      },
+      async evaluate(opportunity) {
+        return { accepted: false, reason: "skip", opportunity };
+      },
+      async plan() {
+        return null;
+      },
+    };
+
+    const staleTs = new Date(Date.now() - 5000).toISOString();
+    const freshTs = new Date().toISOString();
+    const marketWatch = {
+      async fetch() {
+        return [
+          { pair: "ETH/USDC", dex: "a", bid: 100, ask: 100.1, gasUsd: 1, ts: staleTs },
+          { pair: "ETH/USDC", dex: "b", bid: 101, ask: 101.1, gasUsd: 1, ts: freshTs },
+        ];
+      },
+    };
+
+    const engine = new AlphaEngine(
+      {
+        id: "alphaos",
+        version: "0.3.0",
+        description: "test",
+        strategyIds: ["dex-arbitrage"],
+      },
+      [plugin],
+      {
+        intervalMs: 1000,
+        pair: "ETH/USDC",
+        dexes: ["a", "b"],
+        startMode: "paper",
+        liveEnabled: false,
+        autoPromoteToLive: false,
+        quoteStaleMs: 1000,
+        paperStartingBalanceUsd: 1000,
+        liveBalanceUsd: 1000,
+        riskPolicy: {
+          minNetEdgeBpsPaper: 1,
+          minNetEdgeBpsLive: 1,
+          maxTradePctBalance: 0.5,
+          maxDailyLossPct: 0.015,
+          maxConsecutiveFailures: 3,
+        },
+      },
+      { info() {}, error() {} } as never,
+      marketWatch as never,
+      new Simulator({ slippageBps: 1, takerFeeBps: 1, gasUsdDefault: 0.1 }),
+      new RiskEngine({
+        minNetEdgeBpsPaper: 1,
+        minNetEdgeBpsLive: 1,
+        maxTradePctBalance: 0.5,
+        maxDailyLossPct: 0.015,
+        maxConsecutiveFailures: 3,
+      }),
+      store,
+      { async publish() {}, async flushOutbox() {} } as never,
+      {
+        async execute() {
+          return {
+            success: true,
+            txHash: "paper",
+            status: "confirmed" as const,
+            grossUsd: 0,
+            feeUsd: 0,
+            netUsd: 0,
+          };
+        },
+      } as never,
+    );
+
+    engine.start();
+    await sleep(80);
+    engine.stop();
+
+    expect(seenQuotes.length).toBe(1);
+    expect(seenQuotes[0]?.dex).toBe("b");
+    expect(store.getTodayMetrics().staleQuotes).toBe(1);
 
     store.close();
     fs.rmSync(tempDir, { recursive: true, force: true });
