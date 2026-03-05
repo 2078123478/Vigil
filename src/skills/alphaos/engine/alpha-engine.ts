@@ -324,8 +324,9 @@ export class AlphaEngine {
       return;
     }
 
+    const effectiveMode = this.resolveExecutionMode();
     await this.notifier.publish({
-      mode: this.mode,
+      mode: effectiveMode,
       level: "info",
       event: "paper_passed",
       pair: opportunity.pair,
@@ -333,7 +334,6 @@ export class AlphaEngine {
       strategyId: plugin.id,
     });
 
-    const effectiveMode = this.mode === "live" && this.evaluateLiveGate().passed ? "live" : "paper";
     const trade = await this.executor.execute(effectiveMode, plan, simulation);
     const slippageDeviationBps =
       trade.success && plan.notionalUsd > 0
@@ -374,6 +374,13 @@ export class AlphaEngine {
     for (const plugin of this.plugins) {
       await this.processPluginScan(plugin, quotes);
     }
+  }
+
+  private resolveExecutionMode(): ExecutionMode {
+    if (this.mode !== "live") {
+      return "paper";
+    }
+    return this.evaluateLiveGate().passed ? "live" : "paper";
   }
 
   private filterFreshQuotes(quotes: Quote[]): Quote[] {
