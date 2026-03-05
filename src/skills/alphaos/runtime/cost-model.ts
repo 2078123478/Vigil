@@ -3,6 +3,7 @@ export interface CostModelInput {
   notionalUsd: number;
   takerFeeBps: number;
   mevPenaltyBps: number;
+  slippageBps?: number;
   liquidityUsd: number;
   volatility: number;
   avgLatencyMs: number;
@@ -36,13 +37,25 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function estimateSlippage(notionalUsd: number, liquidityUsd: number, volatility: number): number {
+export function estimateSlippage(
+  notionalUsd: number,
+  liquidityUsd: number,
+  volatility: number,
+  slippageBps = 12,
+): number {
   const safeNotional = Math.max(0, notionalUsd);
   const safeLiquidity = Math.max(liquidityUsd, 1000);
   const safeVolatility = Math.max(0, volatility);
-  const baseBps = 3;
+  const slippageScale = clamp(Math.max(0, slippageBps) / 12, 0.25, 4);
+  const baseBps = 3 * slippageScale;
   const impactExponent = 0.5;
-  return baseBps + Math.pow(safeNotional / safeLiquidity, impactExponent) * 10 * (1 + safeVolatility);
+  return (
+    baseBps +
+    Math.pow(safeNotional / safeLiquidity, impactExponent) *
+      10 *
+      slippageScale *
+      (1 + safeVolatility)
+  );
 }
 
 export function estimateLatencyPenalty(avgLatencyMs: number, edgeBps: number): number {
@@ -54,7 +67,12 @@ export function calculateCostBreakdown(input: CostModelInput): CostModelBreakdow
   const safeNotional = Math.max(0, input.notionalUsd);
   const feeBps = Math.max(0, input.takerFeeBps) * 2;
   const mevPenaltyBps = Math.max(0, input.mevPenaltyBps);
-  const slippagePerLegBps = estimateSlippage(safeNotional, input.liquidityUsd, input.volatility);
+  const slippagePerLegBps = estimateSlippage(
+    safeNotional,
+    input.liquidityUsd,
+    input.volatility,
+    input.slippageBps,
+  );
   const slippageBps = slippagePerLegBps * 2;
   const latencyPenaltyBps = estimateLatencyPenalty(input.avgLatencyMs, input.grossEdgeBps);
   const netEdgeBps =

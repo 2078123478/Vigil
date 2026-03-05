@@ -4,7 +4,7 @@ import { Simulator } from "../src/skills/alphaos/runtime/simulator";
 describe("Simulator", () => {
   it("applies dual-leg realistic costs and risk fields", () => {
     const simulator = new Simulator({
-      slippageBps: 10,
+      slippageBps: 12,
       takerFeeBps: 20,
       gasUsdDefault: 1,
       mevPenaltyBps: 5,
@@ -43,5 +43,52 @@ describe("Simulator", () => {
     expect(result.pFail).toBeLessThan(1);
     expect(result.expectedShortfall).toBeGreaterThan(0);
     expect(result.pass).toBe(true);
+  });
+
+  it("uses SLIPPAGE_BPS as a primary cost-model control even with liquidity input", () => {
+    const basePlan = {
+      opportunityId: "opp-2",
+      strategyId: "dex-arbitrage",
+      pair: "ETH/USDC",
+      buyDex: "a",
+      sellDex: "b",
+      buyPrice: 100,
+      sellPrice: 101.4,
+      notionalUsd: 1000,
+      metadata: {
+        liquidityUsd: 1_000_000,
+        volatility: 0,
+        avgLatencyMs: 100,
+      },
+    };
+    const risk = {
+      minNetEdgeBpsPaper: 45,
+      minNetEdgeBpsLive: 60,
+      maxTradePctBalance: 0.03,
+      maxDailyLossPct: 0.015,
+      maxConsecutiveFailures: 3,
+    };
+
+    const lowSlip = new Simulator({
+      slippageBps: 6,
+      takerFeeBps: 20,
+      gasUsdDefault: 1,
+      mevPenaltyBps: 5,
+      liquidityUsdDefault: 1_000_000,
+      volatilityDefault: 0,
+      avgLatencyMsDefault: 100,
+    }).estimate(basePlan, "paper", risk);
+    const highSlip = new Simulator({
+      slippageBps: 24,
+      takerFeeBps: 20,
+      gasUsdDefault: 1,
+      mevPenaltyBps: 5,
+      liquidityUsdDefault: 1_000_000,
+      volatilityDefault: 0,
+      avgLatencyMsDefault: 100,
+    }).estimate(basePlan, "paper", risk);
+
+    expect(highSlip.feeUsd).toBeGreaterThan(lowSlip.feeUsd);
+    expect(highSlip.netEdgeBps).toBeLessThan(lowSlip.netEdgeBps);
   });
 });

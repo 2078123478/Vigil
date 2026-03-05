@@ -15,6 +15,7 @@ interface DexArbitrageOptions {
   takerFeeBps: number;
   mevPenaltyBps: number;
   riskPolicy: RiskPolicy;
+  slippageBps?: number;
   liquidityUsdDefault: number;
   volatilityDefault: number;
   avgLatencyMsDefault: number;
@@ -34,6 +35,7 @@ const defaultOptions: DexArbitrageOptions = {
   takerFeeBps: 20,
   mevPenaltyBps: 5,
   riskPolicy: defaultRiskPolicy,
+  slippageBps: 12,
   liquidityUsdDefault: 250000,
   volatilityDefault: 0.02,
   avgLatencyMsDefault: 250,
@@ -164,6 +166,7 @@ export class DexArbitragePlugin implements StrategyPlugin {
       notionalUsd,
       takerFeeBps: this.options.takerFeeBps,
       mevPenaltyBps: this.options.mevPenaltyBps,
+      slippageBps: this.options.slippageBps,
       liquidityUsd,
       volatility,
       avgLatencyMs,

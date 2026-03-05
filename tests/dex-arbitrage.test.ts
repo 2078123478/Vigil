@@ -127,4 +127,39 @@ describe("DexArbitragePlugin evaluate", () => {
     expect(result.opportunity.metadata?.gasBuyUsd).toBe(7);
     expect(result.opportunity.metadata?.gasSellUsd).toBe(9);
   });
+
+  it("applies SLIPPAGE_BPS during evaluate even when liquidity metadata exists", async () => {
+    const riskPolicy = {
+      minNetEdgeBpsPaper: 45,
+      minNetEdgeBpsLive: 60,
+      maxTradePctBalance: 0.03,
+      maxDailyLossPct: 0.015,
+      maxConsecutiveFailures: 3,
+    };
+    const commonOptions = {
+      takerFeeBps: 20,
+      mevPenaltyBps: 5,
+      riskPolicy,
+      liquidityUsdDefault: 1_000_000,
+      volatilityDefault: 0,
+      avgLatencyMsDefault: 200,
+      gasUsdDefault: 1.25,
+      evalNotionalUsdDefault: 1000,
+    };
+    const lowSlipPlugin = new DexArbitragePlugin({ ...commonOptions, slippageBps: 6 });
+    const highSlipPlugin = new DexArbitragePlugin({ ...commonOptions, slippageBps: 24 });
+
+    const opp = makeOpportunity(110);
+    const ctx = {
+      mode: "paper" as const,
+      balanceUsd: 100_000,
+      riskPolicy,
+    };
+
+    const lowSlip = await lowSlipPlugin.evaluate(opp, ctx);
+    const highSlip = await highSlipPlugin.evaluate(opp, ctx);
+
+    expect(lowSlip.accepted).toBe(true);
+    expect(highSlip.accepted).toBe(false);
+  });
 });

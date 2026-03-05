@@ -60,6 +60,7 @@ export class Simulator {
       notionalUsd: plan.notionalUsd,
       takerFeeBps: this.options.takerFeeBps,
       mevPenaltyBps: this.options.mevPenaltyBps ?? 5,
+      slippageBps: this.options.slippageBps,
       liquidityUsd,
       volatility,
       avgLatencyMs,
