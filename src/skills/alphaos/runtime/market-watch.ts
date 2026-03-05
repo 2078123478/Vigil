@@ -6,6 +6,7 @@ const DEFAULT_QUOTE_STALE_MS = 1000;
 const DEFAULT_FUTURE_TS_TOLERANCE_MS = 1500;
 const DEFAULT_WS_RECONNECT_MS = 2000;
 const DEFAULT_WS_HEARTBEAT_MS = 15000;
+const DEFAULT_WS_CONNECT_TIMEOUT_MS = 7000;
 const DEFAULT_ANOMALY_DEVIATION_PCT = 0.05;
 const DEFAULT_ANOMALY_STREAK_ALERT = 3;
 
@@ -29,6 +30,7 @@ export interface WsMarketWatchOptions {
   wsUrl: string;
   reconnectMs?: number;
   heartbeatMs?: number;
+  connectTimeoutMs?: number;
   createSocket?: WsFactory;
   onQuote: (quote: Quote) => void;
   onAlert: (eventType: string, message: string) => void;
@@ -39,6 +41,7 @@ export interface MarketWatchOptions {
   wsUrl?: string;
   wsReconnectMs?: number;
   wsHeartbeatMs?: number;
+  wsConnectTimeoutMs?: number;
   quoteStaleMs?: number;
   futureTsToleranceMs?: number;
   anomalyDeviationPct?: number;
@@ -89,6 +92,7 @@ export class WsMarketWatch {
   private socket: WsSocketLike | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private connectTimeoutTimer: NodeJS.Timeout | null = null;
   private readonly subscriptions = new Map<string, Set<string>>();
   private running = false;
 
@@ -137,6 +141,7 @@ export class WsMarketWatch {
 
   close(): void {
     this.running = false;
+    this.clearConnectTimeout();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -177,7 +182,9 @@ export class WsMarketWatch {
     }
 
     this.socket = socket;
+    this.startConnectTimeout(socket);
     socket.onopen = () => {
+      this.clearConnectTimeout();
       this.flushSubscriptions();
       this.startHeartbeat();
     };
@@ -188,6 +195,7 @@ export class WsMarketWatch {
       this.options.onAlert("market_ws_error", "WebSocket stream error");
     };
     socket.onclose = () => {
+      this.clearConnectTimeout();
       this.stopHeartbeat();
       this.socket = null;
       if (this.running) {
@@ -209,6 +217,33 @@ export class WsMarketWatch {
       }
       this.openSocket();
     }, reconnectMs);
+  }
+
+  private startConnectTimeout(socket: WsSocketLike): void {
+    this.clearConnectTimeout();
+    const timeoutMs = Math.max(1000, this.options.connectTimeoutMs ?? DEFAULT_WS_CONNECT_TIMEOUT_MS);
+    this.connectTimeoutTimer = setTimeout(() => {
+      if (this.socket !== socket || socket.readyState === 1) {
+        return;
+      }
+
+      this.options.onAlert("market_ws_connect_timeout", `WebSocket connect timeout after ${timeoutMs}ms`);
+      this.socket = null;
+      try {
+        socket.close();
+      } catch {
+        // no-op: timeout path already handled via reconnect
+      }
+      this.scheduleReconnect();
+    }, timeoutMs);
+  }
+
+  private clearConnectTimeout(): void {
+    if (!this.connectTimeoutTimer) {
+      return;
+    }
+    clearTimeout(this.connectTimeoutTimer);
+    this.connectTimeoutTimer = null;
   }
 
   private startHeartbeat(): void {
@@ -325,6 +360,7 @@ export class MarketWatch {
             wsUrl: options.wsUrl,
             reconnectMs: options.wsReconnectMs,
             heartbeatMs: options.wsHeartbeatMs,
+            connectTimeoutMs: options.wsConnectTimeoutMs,
             createSocket: options.wsFactory,
             onQuote: (quote) => {
               this.processQuotes([quote], "ws");
