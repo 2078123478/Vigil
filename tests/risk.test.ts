@@ -38,4 +38,49 @@ describe("RiskEngine", () => {
     });
     expect(decision.breakNow).toBe(true);
   });
+
+  it("tightens live gate thresholds under stressed market state", () => {
+    const gate = risk.canPromoteToLive(
+      {
+        simulationNetUsd24h: 10,
+        simulationWinRate24h: 0.7,
+        consecutiveFailures: 0,
+        permissionFailures24h: 0,
+        rejectRate24h: 0.36,
+        avgLatencyMs24h: 3000,
+        avgSlippageDeviationBps24h: 40,
+        liveEnabled: true,
+      },
+      {
+        volatility24h: 0.35,
+        gasP90Usd24h: 12,
+        liquidityMedianUsd24h: 30_000,
+      },
+    );
+
+    expect(gate.passed).toBe(false);
+    expect(gate.reasons.some((reason) => reason.includes("reject rate"))).toBe(true);
+  });
+
+  it("tightens circuit breaker thresholds under stressed market state", () => {
+    const decision = risk.shouldCircuitBreak(
+      {
+        consecutiveFailures: 0,
+        dailyNetUsd: 0,
+        balanceUsd: 1000,
+        permissionFailures24h: 0,
+        rejectRate24h: 0.57,
+        avgLatencyMs24h: 3500,
+        avgSlippageDeviationBps24h: 70,
+      },
+      {
+        volatility24h: 0.4,
+        gasP90Usd24h: 10,
+        liquidityMedianUsd24h: 20_000,
+      },
+    );
+
+    expect(decision.breakNow).toBe(true);
+    expect(decision.reasons.some((reason) => reason.includes("reject rate"))).toBe(true);
+  });
 });

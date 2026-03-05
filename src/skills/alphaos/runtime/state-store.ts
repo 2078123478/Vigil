@@ -33,6 +33,23 @@ interface SimulationRecord {
   createdAt: string;
 }
 
+function quantile(values: number[], q: number): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = Math.max(0, Math.min(1, q)) * (sorted.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) {
+    return sorted[lower] ?? null;
+  }
+  const lowerValue = sorted[lower] ?? 0;
+  const upperValue = sorted[upper] ?? 0;
+  const weight = position - lower;
+  return lowerValue + (upperValue - lowerValue) * weight;
+}
+
 function createDb(filePath: string): Database.Database {
   return new Database(filePath);
 }
@@ -936,6 +953,63 @@ export class StateStore {
         opportunityRow.total > 0 ? (opportunityRow.rejected ?? 0) / opportunityRow.total : 0,
       avgLatencyMs: tradeQualityRow.avgLatencyMs,
       avgSlippageDeviationBps: tradeQualityRow.avgSlippageDeviationBps,
+    };
+  }
+
+  getMarketStateStats(hours: number): {
+    volatility24h: number | null;
+    gasP90Usd24h: number | null;
+    liquidityMedianUsd24h: number | null;
+    samples: number;
+  } {
+    const safeHours = Math.max(1, Math.min(24 * 30, Math.floor(hours)));
+    const since = new Date(Date.now() - safeHours * 60 * 60 * 1000).toISOString();
+    const rows = this.alphaDb
+      .prepare(
+        `SELECT metadata_json AS metadataJson
+         FROM opportunities
+         WHERE detected_at >= ?
+           AND metadata_json IS NOT NULL`,
+      )
+      .all(since) as Array<{ metadataJson: string }>;
+
+    const volatilities: number[] = [];
+    const gasValues: number[] = [];
+    const liquidities: number[] = [];
+
+    for (const row of rows) {
+      try {
+        const metadata = JSON.parse(row.metadataJson) as Record<string, unknown>;
+        const volatility = metadata.volatility;
+        if (typeof volatility === "number" && Number.isFinite(volatility) && volatility >= 0) {
+          volatilities.push(volatility);
+        }
+
+        const liquidityUsd = metadata.liquidityUsd;
+        if (typeof liquidityUsd === "number" && Number.isFinite(liquidityUsd) && liquidityUsd > 0) {
+          liquidities.push(liquidityUsd);
+        }
+
+        const gasBuyUsd = metadata.gasBuyUsd;
+        const gasSellUsd = metadata.gasSellUsd;
+        if (typeof gasBuyUsd === "number" && Number.isFinite(gasBuyUsd) && gasBuyUsd >= 0) {
+          gasValues.push(gasBuyUsd);
+        }
+        if (typeof gasSellUsd === "number" && Number.isFinite(gasSellUsd) && gasSellUsd >= 0) {
+          gasValues.push(gasSellUsd);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const avgVolatility =
+      volatilities.length > 0 ? volatilities.reduce((sum, value) => sum + value, 0) / volatilities.length : null;
+    return {
+      volatility24h: avgVolatility,
+      gasP90Usd24h: quantile(gasValues, 0.9),
+      liquidityMedianUsd24h: quantile(liquidities, 0.5),
+      samples: rows.length,
     };
   }
 

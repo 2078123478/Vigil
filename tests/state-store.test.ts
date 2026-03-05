@@ -230,6 +230,55 @@ describe("StateStore P0 safety", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("aggregates market state stats from opportunity metadata", () => {
+    const { dir, store } = createStore("alphaos-state-");
+    const now = new Date().toISOString();
+
+    store.insertOpportunity(
+      {
+        id: "opp-market-1",
+        strategyId: "dex-arbitrage",
+        pair: "ETH/USDC",
+        buyDex: "a",
+        sellDex: "b",
+        buyPrice: 100,
+        sellPrice: 101,
+        grossEdgeBps: 100,
+        detectedAt: now,
+        metadata: { volatility: 0.1, liquidityUsd: 120_000, gasBuyUsd: 1, gasSellUsd: 2 },
+      },
+      1,
+      1,
+      "detected",
+    );
+    store.insertOpportunity(
+      {
+        id: "opp-market-2",
+        strategyId: "dex-arbitrage",
+        pair: "ETH/USDC",
+        buyDex: "a",
+        sellDex: "b",
+        buyPrice: 100,
+        sellPrice: 101,
+        grossEdgeBps: 100,
+        detectedAt: now,
+        metadata: { volatility: 0.3, liquidityUsd: 80_000, gasBuyUsd: 3, gasSellUsd: 5 },
+      },
+      1,
+      1,
+      "detected",
+    );
+
+    const stats = store.getMarketStateStats(24);
+    expect(stats.samples).toBe(2);
+    expect(stats.volatility24h).toBeCloseTo(0.2, 6);
+    expect(stats.gasP90Usd24h).toBeCloseTo(4.4, 6);
+    expect(stats.liquidityMedianUsd24h).toBeCloseTo(100_000, 6);
+
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("records stale quote count and average quote latency", () => {
     const { dir, store } = createStore("alphaos-state-");
     store.recordQuoteQuality({ stale: false, latencyMs: 100 });

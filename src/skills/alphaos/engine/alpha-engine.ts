@@ -604,7 +604,7 @@ export class AlphaEngine {
       rejectRate24h: quality.rejectRate,
       avgLatencyMs24h: quality.avgLatencyMs,
       avgSlippageDeviationBps24h: quality.avgSlippageDeviationBps,
-    });
+    }, this.store.getMarketStateStats(24));
     if (!breakDecision.breakNow) {
       return;
     }
@@ -634,6 +634,6 @@ export class AlphaEngine {
       avgSlippageDeviationBps24h: quality.avgSlippageDeviationBps,
       liveEnabled: this.options.liveEnabled,
     };
-    return this.riskEngine.canPromoteToLive(gateInput);
+    return this.riskEngine.canPromoteToLive(gateInput, this.store.getMarketStateStats(24));
   }
 }
