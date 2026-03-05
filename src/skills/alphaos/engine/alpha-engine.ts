@@ -251,17 +251,19 @@ export class AlphaEngine {
       strategyId: plugin.id,
     });
 
+    const balance = this.store.getCurrentBalance(this.mode);
     const evalResult = await plugin.evaluate(opportunity, {
       mode: this.mode,
       quotes,
       nowIso: new Date().toISOString(),
+      balanceUsd: balance,
+      riskPolicy: this.options.riskPolicy,
     });
     if (!evalResult.accepted) {
       this.store.updateOpportunityStatus(opportunity.id, "rejected");
       return;
     }
 
-    const balance = this.store.getCurrentBalance(this.mode);
     const profile = this.store.getStrategyProfile(plugin.id);
     const rawPlan = await plugin.plan(evalResult, {
       balanceUsd: balance,

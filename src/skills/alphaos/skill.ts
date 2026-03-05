@@ -24,6 +24,7 @@ function buildPlugins(config: AlphaOsConfig, store: StateStore): StrategyPlugin[
         liquidityUsdDefault: config.liquidityUsdDefault,
         volatilityDefault: config.volatilityDefault,
         avgLatencyMsDefault: config.avgLatencyMsDefault,
+        gasUsdDefault: config.gasUsdDefault,
         evalNotionalUsdDefault: config.evalNotionalUsdDefault,
       }),
     );
@@ -42,6 +43,7 @@ function buildPlugins(config: AlphaOsConfig, store: StateStore): StrategyPlugin[
         liquidityUsdDefault: config.liquidityUsdDefault,
         volatilityDefault: config.volatilityDefault,
         avgLatencyMsDefault: config.avgLatencyMsDefault,
+        gasUsdDefault: config.gasUsdDefault,
         evalNotionalUsdDefault: config.evalNotionalUsdDefault,
       }),
     );

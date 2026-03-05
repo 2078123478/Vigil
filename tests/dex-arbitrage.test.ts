@@ -36,6 +36,7 @@ describe("DexArbitragePlugin evaluate", () => {
       liquidityUsdDefault: 1_000_000,
       volatilityDefault: 0,
       avgLatencyMsDefault: 200,
+      gasUsdDefault: 1.25,
       evalNotionalUsdDefault: 1000,
     });
 
@@ -59,14 +60,71 @@ describe("DexArbitragePlugin evaluate", () => {
       liquidityUsdDefault: 1_000_000,
       volatilityDefault: 0,
       avgLatencyMsDefault: 200,
+      gasUsdDefault: 1.25,
       evalNotionalUsdDefault: 1000,
     });
 
-    const opp = makeOpportunity(110);
-    const paper = await plugin.evaluate(opp, { mode: "paper" });
-    const live = await plugin.evaluate(opp, { mode: "live" });
+    const opp = makeOpportunity(115);
+    const quotes = [
+      { pair: "ETH/USDC", dex: "dex-a", bid: 99.5, ask: 100, gasUsd: 0.5, ts: new Date().toISOString() },
+      { pair: "ETH/USDC", dex: "dex-b", bid: 101, ask: 101.2, gasUsd: 0.5, ts: new Date().toISOString() },
+    ];
+    const evalCtx = {
+      mode: "paper" as const,
+      quotes,
+      balanceUsd: 100_000,
+      riskPolicy: {
+        minNetEdgeBpsPaper: 45,
+        minNetEdgeBpsLive: 60,
+        maxTradePctBalance: 0.03,
+        maxDailyLossPct: 0.015,
+        maxConsecutiveFailures: 3,
+      },
+    };
+    const paper = await plugin.evaluate(opp, evalCtx);
+    const live = await plugin.evaluate(opp, { ...evalCtx, mode: "live" as const });
 
     expect(paper.accepted).toBe(true);
     expect(live.accepted).toBe(false);
+  });
+
+  it("propagates quote gas into opportunity metadata for simulator consistency", async () => {
+    const plugin = new DexArbitragePlugin({
+      takerFeeBps: 20,
+      mevPenaltyBps: 5,
+      riskPolicy: {
+        minNetEdgeBpsPaper: 45,
+        minNetEdgeBpsLive: 60,
+        maxTradePctBalance: 0.03,
+        maxDailyLossPct: 0.015,
+        maxConsecutiveFailures: 3,
+      },
+      liquidityUsdDefault: 1_000_000,
+      volatilityDefault: 0,
+      avgLatencyMsDefault: 200,
+      gasUsdDefault: 1.25,
+      evalNotionalUsdDefault: 1000,
+    });
+
+    const opp = makeOpportunity(120);
+    const quotes = [
+      { pair: "ETH/USDC", dex: "dex-a", bid: 99.5, ask: 100, gasUsd: 7, ts: new Date().toISOString() },
+      { pair: "ETH/USDC", dex: "dex-b", bid: 101, ask: 101.2, gasUsd: 9, ts: new Date().toISOString() },
+    ];
+    const result = await plugin.evaluate(opp, {
+      mode: "paper",
+      quotes,
+      balanceUsd: 100_000,
+      riskPolicy: {
+        minNetEdgeBpsPaper: 45,
+        minNetEdgeBpsLive: 60,
+        maxTradePctBalance: 0.03,
+        maxDailyLossPct: 0.015,
+        maxConsecutiveFailures: 3,
+      },
+    });
+
+    expect(result.opportunity.metadata?.gasBuyUsd).toBe(7);
+    expect(result.opportunity.metadata?.gasSellUsd).toBe(9);
   });
 });

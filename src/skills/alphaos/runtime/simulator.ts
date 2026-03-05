@@ -1,5 +1,6 @@
 import type { ExecutionMode, ExecutionPlan, RiskPolicy, SimulationResult } from "../types";
 import {
+  calculateNetOutcome,
   calculateCostBreakdown,
   estimateExpectedShortfall,
   estimateFailureProbability,
@@ -46,7 +47,6 @@ export class Simulator {
     const metadata = plan.metadata ?? {};
     const grossEdgeBps =
       plan.buyPrice > 0 ? ((plan.sellPrice - plan.buyPrice) / plan.buyPrice) * 10_000 : 0;
-    const grossUsd = ((plan.sellPrice - plan.buyPrice) / plan.buyPrice) * plan.notionalUsd;
     const gasBuy = asNumber(metadata.gasBuyUsd) ?? this.options.gasUsdDefault;
     const gasSell = asNumber(metadata.gasSellUsd) ?? this.options.gasUsdDefault;
     const liquidityUsd =
@@ -67,8 +67,10 @@ export class Simulator {
       gasSellUsd: gasSell,
     });
     const feeUsd = breakdown.totalCostUsd;
-    const netUsd = grossUsd - feeUsd;
-    const netEdgeBps = plan.notionalUsd > 0 ? (netUsd / plan.notionalUsd) * 10_000 : -Infinity;
+    const outcome = calculateNetOutcome(grossEdgeBps, plan.notionalUsd, feeUsd);
+    const grossUsd = outcome.grossUsd;
+    const netUsd = outcome.netUsd;
+    const netEdgeBps = outcome.netEdgeBps;
     const pFail = estimateFailureProbability(avgLatencyMs, netEdgeBps, volatility);
     const expectedShortfall = estimateExpectedShortfall(
       plan.notionalUsd,

@@ -26,6 +26,12 @@ export interface CostModelBreakdown {
   totalCostUsd: number;
 }
 
+export interface NetOutcome {
+  grossUsd: number;
+  netUsd: number;
+  netEdgeBps: number;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -82,6 +88,22 @@ export function calculateCostBreakdown(input: CostModelInput): CostModelBreakdow
     slippageSellUsd,
     mevUsd,
     totalCostUsd,
+  };
+}
+
+export function calculateNetOutcome(
+  grossEdgeBps: number,
+  notionalUsd: number,
+  totalCostUsd: number,
+): NetOutcome {
+  const safeNotional = Math.max(0, notionalUsd);
+  const grossUsd = safeNotional * grossEdgeBps / 10_000;
+  const netUsd = grossUsd - Math.max(0, totalCostUsd);
+  const netEdgeBps = safeNotional > 0 ? (netUsd / safeNotional) * 10_000 : -Infinity;
+  return {
+    grossUsd,
+    netUsd,
+    netEdgeBps,
   };
 }
 

@@ -9,7 +9,7 @@ import type {
   ScanContext,
   StrategyPlugin,
 } from "../types";
-import { calculateCostBreakdown } from "../runtime/cost-model";
+import { calculateCostBreakdown, calculateNetOutcome } from "../runtime/cost-model";
 
 interface DexArbitrageOptions {
   takerFeeBps: number;
@@ -18,6 +18,7 @@ interface DexArbitrageOptions {
   liquidityUsdDefault: number;
   volatilityDefault: number;
   avgLatencyMsDefault: number;
+  gasUsdDefault: number;
   evalNotionalUsdDefault: number;
 }
 
@@ -36,6 +37,7 @@ const defaultOptions: DexArbitrageOptions = {
   liquidityUsdDefault: 250000,
   volatilityDefault: 0.02,
   avgLatencyMsDefault: 250,
+  gasUsdDefault: 1.25,
   evalNotionalUsdDefault: 1000,
 };
 
@@ -142,28 +144,55 @@ export class DexArbitragePlugin implements StrategyPlugin {
     const liquidityUsd =
       asNumber(input.metadata?.liquidityUsd) ?? this.options.liquidityUsdDefault;
     const volatility = asNumber(input.metadata?.volatility) ?? this.options.volatilityDefault;
+    const riskPolicy = ctx.riskPolicy ?? this.options.riskPolicy;
+    const maxTradePctBalance = Math.max(0, riskPolicy.maxTradePctBalance);
+    const balanceUsd = asNumber(ctx.balanceUsd);
+    const notionalUsd =
+      balanceUsd !== null
+        ? Math.max(0, balanceUsd * maxTradePctBalance)
+        : this.options.evalNotionalUsdDefault;
+    const gasBuyUsd =
+      asNumber(buyQuote?.gasUsd) ??
+      asNumber(input.metadata?.gasBuyUsd) ??
+      this.options.gasUsdDefault;
+    const gasSellUsd =
+      asNumber(sellQuote?.gasUsd) ??
+      asNumber(input.metadata?.gasSellUsd) ??
+      this.options.gasUsdDefault;
     const breakdown = calculateCostBreakdown({
       grossEdgeBps: input.grossEdgeBps,
-      notionalUsd: this.options.evalNotionalUsdDefault,
+      notionalUsd,
       takerFeeBps: this.options.takerFeeBps,
       mevPenaltyBps: this.options.mevPenaltyBps,
       liquidityUsd,
       volatility,
       avgLatencyMs,
-      gasBuyUsd: 0,
-      gasSellUsd: 0,
+      gasBuyUsd,
+      gasSellUsd,
     });
+    const outcome = calculateNetOutcome(input.grossEdgeBps, notionalUsd, breakdown.totalCostUsd);
     const threshold =
       ctx.mode === "live"
-        ? this.options.riskPolicy.minNetEdgeBpsLive
-        : this.options.riskPolicy.minNetEdgeBpsPaper;
-    const accepted = breakdown.netEdgeBps >= threshold;
+        ? riskPolicy.minNetEdgeBpsLive
+        : riskPolicy.minNetEdgeBpsPaper;
+    const accepted = outcome.netEdgeBps >= threshold;
+    const opportunity: Opportunity = {
+      ...input,
+      metadata: {
+        ...(input.metadata ?? {}),
+        liquidityUsd,
+        volatility,
+        avgLatencyMs,
+        gasBuyUsd,
+        gasSellUsd,
+      },
+    };
     return {
       accepted,
       reason: accepted
-        ? `net edge ${breakdown.netEdgeBps.toFixed(1)} bps`
-        : `net edge ${breakdown.netEdgeBps.toFixed(1)} bps below threshold`,
-      opportunity: input,
+        ? `net edge ${outcome.netEdgeBps.toFixed(1)} bps`
+        : `net edge ${outcome.netEdgeBps.toFixed(1)} bps below threshold`,
+      opportunity,
     };
   }
 

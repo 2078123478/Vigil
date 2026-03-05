@@ -91,6 +91,8 @@ export interface EvalContext {
   mode: ExecutionMode;
   quotes?: Quote[];
   nowIso?: string;
+  balanceUsd?: number;
+  riskPolicy?: RiskPolicy;
 }
 
 export interface PlanContext {
