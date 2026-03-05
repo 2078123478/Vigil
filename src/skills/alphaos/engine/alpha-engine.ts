@@ -218,7 +218,7 @@ export class AlphaEngine {
     try {
       await this.notifier.flushOutbox();
 
-      if (this.circuitBreakerUntil > Date.now()) {
+      if (this.isCircuitBreakerActive()) {
         this.mode = "paper";
         return;
       }
@@ -227,10 +227,7 @@ export class AlphaEngine {
 
       const quotes = await this.marketWatch.fetch(this.options.pair, this.options.dexes);
       const freshQuotes = this.filterFreshQuotes(quotes);
-
-      for (const plugin of this.plugins) {
-        await this.processPluginScan(plugin, freshQuotes);
-      }
+      await this.scanPlugins(freshQuotes);
     } catch (error) {
       this.logger.error({ err: error }, "engine tick failed");
       this.store.insertAlert("error", "engine_tick_failure", String(error));
@@ -367,6 +364,16 @@ export class AlphaEngine {
 
     this.mode = "live";
     await this.notifier.publish({ mode: "live", level: "info", event: "engine_recovered" });
+  }
+
+  private isCircuitBreakerActive(nowMs = Date.now()): boolean {
+    return this.circuitBreakerUntil > nowMs;
+  }
+
+  private async scanPlugins(quotes: Quote[]): Promise<void> {
+    for (const plugin of this.plugins) {
+      await this.processPluginScan(plugin, quotes);
+    }
   }
 
   private filterFreshQuotes(quotes: Quote[]): Quote[] {
