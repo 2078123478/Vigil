@@ -234,6 +234,10 @@ export class StateStore {
     }
   }
 
+  private runPreparedStatement(db: Database.Database, sql: string, ...params: unknown[]): void {
+    db.prepare(sql).run(...params);
+  }
+
   upsertStrategy(pluginId: string, config: unknown): string {
     const existing = this.alphaDb
       .prepare("SELECT id FROM strategies WHERE plugin_id = ?")
@@ -241,33 +245,45 @@ export class StateStore {
 
     const now = new Date().toISOString();
     if (existing) {
-      this.alphaDb
-        .prepare("UPDATE strategies SET enabled = 1, config_json = ?, updated_at = ? WHERE id = ?")
-        .run(JSON.stringify(config), now, existing.id);
+      this.runPreparedStatement(
+        this.alphaDb,
+        "UPDATE strategies SET enabled = 1, config_json = ?, updated_at = ? WHERE id = ?",
+        JSON.stringify(config),
+        now,
+        existing.id,
+      );
       return existing.id;
     }
 
     const id = crypto.randomUUID();
-    this.alphaDb
-      .prepare(
-        "INSERT INTO strategies (id, plugin_id, enabled, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .run(id, pluginId, 1, JSON.stringify(config), now, now);
+    this.runPreparedStatement(
+      this.alphaDb,
+      "INSERT INTO strategies (id, plugin_id, enabled, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      id,
+      pluginId,
+      1,
+      JSON.stringify(config),
+      now,
+      now,
+    );
     return id;
   }
 
   upsertStrategyProfile(strategyId: string, variant: "A" | "B", params: Record<string, unknown>): void {
     const now = new Date().toISOString();
-    this.alphaDb
-      .prepare(
-        `INSERT INTO strategy_profiles (strategy_id, variant, params_json, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(strategy_id) DO UPDATE SET
-           variant = excluded.variant,
-           params_json = excluded.params_json,
-           updated_at = excluded.updated_at`,
-      )
-      .run(strategyId, variant, JSON.stringify(params), now);
+    this.runPreparedStatement(
+      this.alphaDb,
+      `INSERT INTO strategy_profiles (strategy_id, variant, params_json, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(strategy_id) DO UPDATE SET
+         variant = excluded.variant,
+         params_json = excluded.params_json,
+         updated_at = excluded.updated_at`,
+      strategyId,
+      variant,
+      JSON.stringify(params),
+      now,
+    );
   }
 
   getStrategyProfile(strategyId: string): StrategyProfile | null {
@@ -345,17 +361,22 @@ export class StateStore {
     expiresAt: string;
   }): void {
     const now = new Date().toISOString();
-    this.alphaDb
-      .prepare(
-        `INSERT INTO token_cache (symbol, chain_index, token_address, token_decimals, expires_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(symbol, chain_index) DO UPDATE SET
-           token_address = excluded.token_address,
-           token_decimals = excluded.token_decimals,
-           expires_at = excluded.expires_at,
-           updated_at = excluded.updated_at`,
-      )
-      .run(entry.symbol.toUpperCase(), entry.chainIndex, entry.address, entry.decimals, entry.expiresAt, now);
+    this.runPreparedStatement(
+      this.alphaDb,
+      `INSERT INTO token_cache (symbol, chain_index, token_address, token_decimals, expires_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(symbol, chain_index) DO UPDATE SET
+         token_address = excluded.token_address,
+         token_decimals = excluded.token_decimals,
+         expires_at = excluded.expires_at,
+         updated_at = excluded.updated_at`,
+      entry.symbol.toUpperCase(),
+      entry.chainIndex,
+      entry.address,
+      entry.decimals,
+      entry.expiresAt,
+      now,
+    );
   }
 
   listTokenCache(limit = 200, symbol?: string, chainIndex?: string): TokenCacheEntry[] {
@@ -418,120 +439,139 @@ export class StateStore {
   }
 
   insertMarketSnapshot(input: { pair: string; dex: string; bid: number; ask: number; ts: string }): void {
-    this.alphaDb
-      .prepare(
-        "INSERT INTO market_snapshots (id, pair, dex, bid, ask, ts) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .run(crypto.randomUUID(), input.pair, input.dex, input.bid, input.ask, input.ts);
+    this.runPreparedStatement(
+      this.alphaDb,
+      "INSERT INTO market_snapshots (id, pair, dex, bid, ask, ts) VALUES (?, ?, ?, ?, ?, ?)",
+      crypto.randomUUID(),
+      input.pair,
+      input.dex,
+      input.bid,
+      input.ask,
+      input.ts,
+    );
   }
 
   recordQuoteQuality(input: { stale: boolean; latencyMs: number | null; ts?: string }): void {
     const day = input.ts ? utcDay(new Date(input.ts)) : utcDay();
-    this.alphaDb
-      .prepare(
-        `INSERT INTO quote_quality_daily (
-          day, total_quotes, stale_quotes, latency_sum_ms, latency_samples
-        )
-        VALUES (?, 1, ?, ?, ?)
-        ON CONFLICT(day) DO UPDATE SET
-          total_quotes = quote_quality_daily.total_quotes + 1,
-          stale_quotes = quote_quality_daily.stale_quotes + excluded.stale_quotes,
-          latency_sum_ms = quote_quality_daily.latency_sum_ms + excluded.latency_sum_ms,
-          latency_samples = quote_quality_daily.latency_samples + excluded.latency_samples`,
+    this.runPreparedStatement(
+      this.alphaDb,
+      `INSERT INTO quote_quality_daily (
+        day, total_quotes, stale_quotes, latency_sum_ms, latency_samples
       )
-      .run(
-        day,
-        input.stale ? 1 : 0,
-        input.latencyMs ?? 0,
-        input.latencyMs === null ? 0 : 1,
-      );
+      VALUES (?, 1, ?, ?, ?)
+      ON CONFLICT(day) DO UPDATE SET
+        total_quotes = quote_quality_daily.total_quotes + 1,
+        stale_quotes = quote_quality_daily.stale_quotes + excluded.stale_quotes,
+        latency_sum_ms = quote_quality_daily.latency_sum_ms + excluded.latency_sum_ms,
+        latency_samples = quote_quality_daily.latency_samples + excluded.latency_samples`,
+      day,
+      input.stale ? 1 : 0,
+      input.latencyMs ?? 0,
+      input.latencyMs === null ? 0 : 1,
+    );
   }
 
   insertOpportunity(input: Opportunity, estCostUsd: number, estNetUsd: number, status = "detected"): void {
-    this.alphaDb
-      .prepare(
-        `INSERT INTO opportunities (
-          id, strategy_id, pair, buy_dex, sell_dex, gross_edge_bps, est_cost_usd, est_net_usd, status, detected_at, metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        input.id,
-        input.strategyId,
-        input.pair,
-        input.buyDex,
-        input.sellDex,
-        input.grossEdgeBps,
-        estCostUsd,
-        estNetUsd,
-        status,
-        input.detectedAt,
-        input.metadata ? JSON.stringify(input.metadata) : null,
-      );
+    this.runPreparedStatement(
+      this.alphaDb,
+      `INSERT INTO opportunities (
+        id, strategy_id, pair, buy_dex, sell_dex, gross_edge_bps, est_cost_usd, est_net_usd, status, detected_at, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.strategyId,
+      input.pair,
+      input.buyDex,
+      input.sellDex,
+      input.grossEdgeBps,
+      estCostUsd,
+      estNetUsd,
+      status,
+      input.detectedAt,
+      input.metadata ? JSON.stringify(input.metadata) : null,
+    );
   }
 
   updateOpportunityStatus(id: string, status: string): void {
-    this.alphaDb.prepare("UPDATE opportunities SET status = ? WHERE id = ?").run(status, id);
+    this.runPreparedStatement(this.alphaDb, "UPDATE opportunities SET status = ? WHERE id = ?", status, id);
   }
 
   updateOpportunityEstimate(id: string, estCostUsd: number, estNetUsd: number, status: string): void {
-    this.alphaDb
-      .prepare("UPDATE opportunities SET est_cost_usd = ?, est_net_usd = ?, status = ? WHERE id = ?")
-      .run(estCostUsd, estNetUsd, status, id);
+    this.runPreparedStatement(
+      this.alphaDb,
+      "UPDATE opportunities SET est_cost_usd = ?, est_net_usd = ?, status = ? WHERE id = ?",
+      estCostUsd,
+      estNetUsd,
+      status,
+      id,
+    );
   }
 
   insertSimulation(sim: SimulationRecord): void {
-    this.alphaDb
-      .prepare(
-        "INSERT INTO simulations (id, opportunity_id, mode, input_json, result_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .run(crypto.randomUUID(), sim.opportunityId, sim.mode, sim.inputJson, sim.resultJson, sim.createdAt);
+    this.runPreparedStatement(
+      this.alphaDb,
+      "INSERT INTO simulations (id, opportunity_id, mode, input_json, result_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      crypto.randomUUID(),
+      sim.opportunityId,
+      sim.mode,
+      sim.inputJson,
+      sim.resultJson,
+      sim.createdAt,
+    );
   }
 
   insertTrade(opportunityId: string, mode: ExecutionMode, trade: TradeResult, createdAt: string): void {
     const day = utcDay(new Date(createdAt));
     const transaction = this.alphaDb.transaction(() => {
-      this.alphaDb
-        .prepare(
-          `INSERT INTO trades (
-            id, opportunity_id, mode, tx_hash, status, gross_usd, fee_usd, net_usd,
-            error_type, latency_ms, slippage_deviation_bps, created_at, settled_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          crypto.randomUUID(),
-          opportunityId,
-          mode,
-          trade.txHash,
-          trade.status,
-          trade.grossUsd,
-          trade.feeUsd,
-          trade.netUsd,
-          trade.errorType ?? null,
-          trade.latencyMs ?? null,
-          trade.slippageDeviationBps ?? null,
-          createdAt,
-          createdAt,
-        );
+      this.runPreparedStatement(
+        this.alphaDb,
+        `INSERT INTO trades (
+          id, opportunity_id, mode, tx_hash, status, gross_usd, fee_usd, net_usd,
+          error_type, latency_ms, slippage_deviation_bps, created_at, settled_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        crypto.randomUUID(),
+        opportunityId,
+        mode,
+        trade.txHash,
+        trade.status,
+        trade.grossUsd,
+        trade.feeUsd,
+        trade.netUsd,
+        trade.errorType ?? null,
+        trade.latencyMs ?? null,
+        trade.slippageDeviationBps ?? null,
+        createdAt,
+        createdAt,
+      );
 
-      this.alphaDb
-        .prepare(
-          `INSERT INTO pnl_daily (day, mode, gross_usd, fee_usd, net_usd, trades_count)
-           VALUES (?, ?, ?, ?, ?, 1)
-           ON CONFLICT(day, mode) DO UPDATE SET
-             gross_usd = pnl_daily.gross_usd + excluded.gross_usd,
-             fee_usd = pnl_daily.fee_usd + excluded.fee_usd,
-             net_usd = pnl_daily.net_usd + excluded.net_usd,
-             trades_count = pnl_daily.trades_count + 1`,
-        )
-        .run(day, mode, trade.grossUsd, trade.feeUsd, trade.netUsd);
+      this.runPreparedStatement(
+        this.alphaDb,
+        `INSERT INTO pnl_daily (day, mode, gross_usd, fee_usd, net_usd, trades_count)
+         VALUES (?, ?, ?, ?, ?, 1)
+         ON CONFLICT(day, mode) DO UPDATE SET
+           gross_usd = pnl_daily.gross_usd + excluded.gross_usd,
+           fee_usd = pnl_daily.fee_usd + excluded.fee_usd,
+           net_usd = pnl_daily.net_usd + excluded.net_usd,
+           trades_count = pnl_daily.trades_count + 1`,
+        day,
+        mode,
+        trade.grossUsd,
+        trade.feeUsd,
+        trade.netUsd,
+      );
     });
     transaction();
   }
 
   insertAlert(level: string, eventType: string, message: string): void {
-    this.alphaDb
-      .prepare("INSERT INTO alerts (id, level, event_type, message, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run(crypto.randomUUID(), level, eventType, message, new Date().toISOString());
+    this.runPreparedStatement(
+      this.alphaDb,
+      "INSERT INTO alerts (id, level, event_type, message, created_at) VALUES (?, ?, ?, ?, ?)",
+      crypto.randomUUID(),
+      level,
+      eventType,
+      message,
+      new Date().toISOString(),
+    );
   }
 
   getTodayMetrics(): TodayMetrics {
@@ -824,13 +864,15 @@ export class StateStore {
 
   ensureBalanceBaseline(mode: ExecutionMode, baselineUsd: number): void {
     const now = new Date().toISOString();
-    this.alphaDb
-      .prepare(
-        `INSERT INTO mode_balances (mode, baseline_usd, updated_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(mode) DO NOTHING`,
-      )
-      .run(mode, baselineUsd, now);
+    this.runPreparedStatement(
+      this.alphaDb,
+      `INSERT INTO mode_balances (mode, baseline_usd, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(mode) DO NOTHING`,
+      mode,
+      baselineUsd,
+      now,
+    );
   }
 
   getCurrentBalance(mode: ExecutionMode): number {
@@ -906,22 +948,20 @@ export class StateStore {
     sourceTxHash?: string;
   }): string {
     const id = crypto.randomUUID();
-    this.alphaDb
-      .prepare(
-        `INSERT INTO whale_signals (
-          id, wallet, token, side, size_usd, confidence, source_tx_hash, status, received_at, processed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL)`,
-      )
-      .run(
-        id,
-        input.wallet,
-        input.token,
-        input.side,
-        input.sizeUsd,
-        input.confidence,
-        input.sourceTxHash ?? null,
-        new Date().toISOString(),
-      );
+    this.runPreparedStatement(
+      this.alphaDb,
+      `INSERT INTO whale_signals (
+        id, wallet, token, side, size_usd, confidence, source_tx_hash, status, received_at, processed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL)`,
+      id,
+      input.wallet,
+      input.token,
+      input.side,
+      input.sizeUsd,
+      input.confidence,
+      input.sourceTxHash ?? null,
+      new Date().toISOString(),
+    );
     return id;
   }
 
@@ -955,9 +995,12 @@ export class StateStore {
         .all(safeLimit) as WhaleSignal[];
 
       for (const signal of signals) {
-        this.alphaDb
-          .prepare("UPDATE whale_signals SET status = 'processing', processed_at = ? WHERE id = ? AND status = 'pending'")
-          .run(now, signal.id);
+        this.runPreparedStatement(
+          this.alphaDb,
+          "UPDATE whale_signals SET status = 'processing', processed_at = ? WHERE id = ? AND status = 'pending'",
+          now,
+          signal.id,
+        );
       }
 
       return signals.map((signal) => ({
@@ -970,18 +1013,29 @@ export class StateStore {
   }
 
   updateWhaleSignalStatus(id: string, status: "consumed" | "ignored"): void {
-    this.alphaDb
-      .prepare("UPDATE whale_signals SET status = ?, processed_at = ? WHERE id = ? AND status = 'processing'")
-      .run(status, new Date().toISOString(), id);
+    this.runPreparedStatement(
+      this.alphaDb,
+      "UPDATE whale_signals SET status = ?, processed_at = ? WHERE id = ? AND status = 'processing'",
+      status,
+      new Date().toISOString(),
+      id,
+    );
   }
 
   enqueueOutbox(endpoint: string, payload: string, nextRetryAt: string, status: "pending" | "dead" = "pending", retryCount = 0, lastError: string | null = null): void {
-    this.alphaDb
-      .prepare(
-        `INSERT INTO hook_outbox (id, endpoint, payload, status, retry_count, next_retry_at, last_error, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(crypto.randomUUID(), endpoint, payload, status, retryCount, nextRetryAt, lastError, new Date().toISOString());
+    this.runPreparedStatement(
+      this.alphaDb,
+      `INSERT INTO hook_outbox (id, endpoint, payload, status, retry_count, next_retry_at, last_error, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      crypto.randomUUID(),
+      endpoint,
+      payload,
+      status,
+      retryCount,
+      nextRetryAt,
+      lastError,
+      new Date().toISOString(),
+    );
   }
 
   getDueOutbox(nowIso: string, limit = 50): HookOutboxRow[] {
@@ -997,16 +1051,20 @@ export class StateStore {
   }
 
   markOutboxSent(id: string): void {
-    this.alphaDb.prepare("UPDATE hook_outbox SET status = 'sent' WHERE id = ?").run(id);
+    this.runPreparedStatement(this.alphaDb, "UPDATE hook_outbox SET status = 'sent' WHERE id = ?", id);
   }
 
   markOutboxRetry(id: string, retryCount: number, nextRetryAt: string, lastError: string): void {
     const status = retryCount >= 5 ? "dead" : "pending";
-    this.alphaDb
-      .prepare(
-        "UPDATE hook_outbox SET status = ?, retry_count = ?, next_retry_at = ?, last_error = ? WHERE id = ?",
-      )
-      .run(status, retryCount, nextRetryAt, lastError.slice(0, 512), id);
+    this.runPreparedStatement(
+      this.alphaDb,
+      "UPDATE hook_outbox SET status = ?, retry_count = ?, next_retry_at = ?, last_error = ? WHERE id = ?",
+      status,
+      retryCount,
+      nextRetryAt,
+      lastError.slice(0, 512),
+      id,
+    );
   }
 
   upsertVaultItem(params: {
@@ -1022,31 +1080,34 @@ export class StateStore {
     const now = new Date().toISOString();
 
     if (!existing) {
-      this.vaultDb
-        .prepare(
-          `INSERT INTO vault_items
-           (id, key_alias, cipher_text, nonce, salt, kdf_iter, created_at, rotated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
-        )
-        .run(
-          crypto.randomUUID(),
-          params.keyAlias,
-          params.cipherText,
-          params.nonce,
-          params.salt,
-          params.kdfIter,
-          now,
-        );
+      this.runPreparedStatement(
+        this.vaultDb,
+        `INSERT INTO vault_items
+         (id, key_alias, cipher_text, nonce, salt, kdf_iter, created_at, rotated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+        crypto.randomUUID(),
+        params.keyAlias,
+        params.cipherText,
+        params.nonce,
+        params.salt,
+        params.kdfIter,
+        now,
+      );
       return;
     }
 
-    this.vaultDb
-      .prepare(
-        `UPDATE vault_items
-         SET cipher_text = ?, nonce = ?, salt = ?, kdf_iter = ?, rotated_at = ?
-         WHERE id = ?`,
-      )
-      .run(params.cipherText, params.nonce, params.salt, params.kdfIter, now, existing.id);
+    this.runPreparedStatement(
+      this.vaultDb,
+      `UPDATE vault_items
+       SET cipher_text = ?, nonce = ?, salt = ?, kdf_iter = ?, rotated_at = ?
+       WHERE id = ?`,
+      params.cipherText,
+      params.nonce,
+      params.salt,
+      params.kdfIter,
+      now,
+      existing.id,
+    );
   }
 
   getVaultItem(keyAlias: string):
