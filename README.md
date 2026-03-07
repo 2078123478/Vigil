@@ -119,12 +119,15 @@ VAULT_MASTER_PASSWORD=pass123 npm run dev -- vault:set trader-key 0xabc
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- vault:get trader-key
 ```
 
-## Agent-Comm v0.1
-- 最小复用入口：`docs/AGENT_COMM_MIN_REUSE.md`
-- 用户说明书：`docs/AGENT_COMM_EXPLAINED.md`
+## Agent-Comm
+- v2 协议草案（架构评审版）：`docs/AGENT_COMM_PROTOCOL_V2_DRAFT.md`，包含签名标准推荐、陌生人建联/冷启动消息策略、direct-tx 隐私边界
+- v2 正式设计文档（草案之后、实现拆解之前）：`docs/AGENT_COMM_V2_DESIGN.md`
+- v2 实施任务拆解（执行清单）：`AGENT_COMM_V2_TASK.md`
+- 最小复用入口（当前 runtime / v0.1）：`docs/AGENT_COMM_MIN_REUSE.md`
+- 用户说明书（当前 runtime）：`docs/AGENT_COMM_EXPLAINED.md`
 - 隐私与建联分析：`docs/AGENT_COMM_PRIVACY_AND_TRUST_ANALYSIS.md`
 
-最小复用入口文档见 `docs/AGENT_COMM_MIN_REUSE.md`。
+当前可运行入口仍以 `docs/AGENT_COMM_MIN_REUSE.md` 为准；`docs/AGENT_COMM_PROTOCOL_V2_DRAFT.md` 给出已批准的协议方向，`docs/AGENT_COMM_V2_DESIGN.md` 将这些决策整理为实现导向的正式设计。
 
 1. Configure `.env`:
 ```bash
