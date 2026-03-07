@@ -103,29 +103,29 @@ Exit criteria:
 
 Tasks:
 
-- [ ] `[Core]` Introduce a local identity profile model that separates:
+- [x] `[Core]` Introduce a local identity profile model that separates:
   - Long-lived Identity Wallet (LIW)
   - Active Comm Wallet (ACW)
   - Temporary/Demo wallet
 - [ ] `[Core]` Extend vault/runtime initialization so fresh v2 installs can create distinct LIW and ACW roles without breaking current `agent-comm:wallet:init`.
-- [ ] `[Core]` Add the migration bridge for existing installs:
+- [x] `[Core]` Add the migration bridge for existing installs:
   - detect existing single comm wallet
   - represent it as temporary LIW + ACW dual-use state
   - avoid forced address churn during upgrade
-- [ ] `[Core]` Implement `EIP-712` sign/verify utilities for `ContactCard` and `TransportBinding`.
-- [ ] `[Core]` Implement artifact normalization helpers:
+- [x] `[Core]` Implement `EIP-712` sign/verify utilities for `ContactCard` and `TransportBinding`.
+- [x] `[Core]` Implement artifact normalization helpers:
   - digest computation
   - expiry validation
   - signer/domain verification
   - protocol support parsing
-- [ ] `[Core]` Implement contact-card export service that emits:
+- [x] `[Core]` Implement contact-card export service that emits:
   - supported protocols
   - display fields
   - LIW
   - active transport endpoint
   - default capability profile/capabilities
   - proof block
-- [ ] `[Core]` Implement contact-card import verification with clear failure reasons for:
+- [x] `[Core]` Implement contact-card import verification with clear failure reasons for:
   - bad signature
   - expired artifact
   - domain mismatch
@@ -152,10 +152,10 @@ Exit criteria:
 
 Tasks:
 
-- [ ] `[Core]` Extend `StateStore` schema creation to add additive v2 tables with the existing `agent_*` naming style.
-- [ ] `[Core]` Add a local identity table for LIW/ACW metadata and active binding tracking.
+- [x] `[Core]` Extend `StateStore` schema creation to add additive v2 tables with the existing `agent_*` naming style.
+- [x] `[Core]` Add a local identity table for LIW/ACW metadata and active binding tracking.
 - [ ] `[Core]` Add a contact table keyed by internal `contactId` and canonical `identityWallet`.
-- [ ] `[Core]` Add a signed-artifact table that stores:
+- [x] `[Core]` Add a signed-artifact table that stores:
   - artifact type
   - digest
   - signer

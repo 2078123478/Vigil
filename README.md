@@ -148,17 +148,25 @@ VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:wallet:init --private-ke
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:identity
 npm run dev -- agent-comm:help
 ```
-4. Register a trusted peer with the legacy/manual v1 fallback flow:
+4. (Optional) Initialize a temporary/demo wallet role without mutating LIW/ACW dual-use fallback:
+```bash
+VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:wallet:init-demo
+```
+5. Export and locally verify/import v2 identity artifacts:
+```bash
+VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:card:export --output ./my-card.json
+npm run dev -- agent-comm:card:import ./my-card.json
+```
+6. Register a trusted peer with the legacy/manual v1 fallback flow:
 ```bash
 npm run dev -- agent-comm:peer:trust peer-b 0x<peer_wallet_address> 0x<peer_pubkey>
 ```
-Planned v2 identity-artifact commands such as `agent-comm:card:export` and `agent-comm:card:import` are now reserved in CLI help, but their full workflow is not implemented in this phase.
-5. Send a command without wiring low-level modules:
+7. Send a command without wiring low-level modules:
 ```bash
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:send ping peer-b --echo hello
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:send start_discovery peer-b --strategy-id spread-threshold
 ```
-6. Or send through the existing HTTP server using the same Bearer auth as other `/api/v1/*` routes:
+8. Or send through the existing HTTP server using the same Bearer auth as other `/api/v1/*` routes:
 ```bash
 curl -X POST http://127.0.0.1:3000/api/v1/agent-comm/send/ping \
   -H "Authorization: Bearer $API_SECRET" \
@@ -170,11 +178,11 @@ curl -X POST http://127.0.0.1:3000/api/v1/agent-comm/send/start-discovery \
   -H "Content-Type: application/json" \
   -d '{"peerId":"peer-b","strategyId":"spread-threshold"}'
 ```
-7. Start service with vault password when you want runtime receive/execute path:
+9. Start service with vault password when you want runtime receive/execute path:
 ```bash
 VAULT_MASTER_PASSWORD=pass123 npm run dev
 ```
-8. Query runtime status via `/api/v1/agent-comm/*` endpoints.
+10. Query runtime status via `/api/v1/agent-comm/*` endpoints.
 
 ## Notes
 - Business DB: `data/alpha.db`

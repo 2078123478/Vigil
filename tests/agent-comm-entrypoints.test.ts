@@ -10,6 +10,7 @@ import {
   exportIdentityArtifactBundle,
   getCommIdentity,
   importIdentityArtifactBundle,
+  importIdentityArtifactBundleFromJson,
   initCommWallet,
   initTemporaryDemoWallet,
   listLocalIdentityProfiles,
@@ -136,6 +137,69 @@ describe("agent-comm entrypoints", () => {
       exported.transportBindingDigest,
     );
     expect(deps.store.listAgentSignedArtifacts(10)).toHaveLength(2);
+  });
+
+  it("classifies artifact import failures with explicit reason codes", async () => {
+    const deps = createDeps("alphaos-comm-entry-");
+    initCommWallet(deps, {
+      masterPassword: "pass123",
+      privateKey: "0x1111111111111111111111111111111111111111111111111111111111111111",
+    });
+
+    const exported = await exportIdentityArtifactBundle(deps, {
+      masterPassword: "pass123",
+      nowUnixSeconds: 1741348800,
+      expiresInDays: 1,
+    });
+
+    const tamperedBundle = {
+      ...exported.bundle,
+      contactCard: {
+        ...exported.bundle.contactCard,
+        displayName: "Tampered",
+      },
+      transportBinding: {
+        ...exported.bundle.transportBinding,
+        receiveAddress: "0x3333333333333333333333333333333333333333",
+      },
+    };
+
+    const imported = await importIdentityArtifactBundle(
+      {
+        config: deps.config,
+        store: deps.store,
+      },
+      {
+        bundle: tamperedBundle,
+        expectedChainId: 8453,
+        nowUnixSeconds: exported.bundle.contactCard.expiresAt + 1,
+      },
+    );
+
+    expect(imported.ok).toBe(false);
+    expect(imported.failureCodes).toEqual(
+      expect.arrayContaining([
+        "bad_signature",
+        "expired_artifact",
+        "domain_mismatch",
+        "malformed_transport_binding",
+      ]),
+    );
+  });
+
+  it("returns invalid_artifact when importing malformed artifact JSON", async () => {
+    const deps = createDeps("alphaos-comm-entry-");
+    const imported = await importIdentityArtifactBundleFromJson(
+      {
+        config: deps.config,
+        store: deps.store,
+      },
+      "{not-json",
+    );
+
+    expect(imported.ok).toBe(false);
+    expect(imported.failureCodes).toEqual(["invalid_artifact"]);
+    expect(imported.reasons[0]).toMatch(/invalid artifact bundle JSON/i);
   });
 
   it("initializes a temporary demo wallet profile without mutating LIW/ACW aliasing", () => {
