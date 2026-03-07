@@ -4,6 +4,8 @@ Status: Draft for architecture review
 Date: 2026-03-07  
 Scope: direct-transaction mode on EVM-compatible chains
 
+Note: exact typed-data field contracts for signed identity artifacts are frozen in `docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md`. The JSON examples below remain illustrative.
+
 ## 1. Executive decisions
 
 | Topic | v2 decision | Why this is the recommendation |

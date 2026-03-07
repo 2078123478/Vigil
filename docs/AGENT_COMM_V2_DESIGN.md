@@ -3,6 +3,7 @@
 Status: Design baseline  
 Date: 2026-03-07  
 Based on: `docs/AGENT_COMM_PROTOCOL_V2_DRAFT.md`  
+Canonical artifact contracts: `docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md`  
 Related: `docs/AGENT_COMM_EXPLAINED.md`, `docs/AGENT_COMM_PRIVACY_AND_TRUST_ANALYSIS.md`, `docs/AGENT_COMM_MIN_REUSE.md`  
 Scope: direct-transaction mode on EVM-compatible chains
 

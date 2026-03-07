@@ -122,6 +122,7 @@ VAULT_MASTER_PASSWORD=pass123 npm run dev -- vault:get trader-key
 ## Agent-Comm
 - v2 协议草案（架构评审版）：`docs/AGENT_COMM_PROTOCOL_V2_DRAFT.md`，包含签名标准推荐、陌生人建联/冷启动消息策略、direct-tx 隐私边界
 - v2 正式设计文档（草案之后、实现拆解之前）：`docs/AGENT_COMM_V2_DESIGN.md`
+- v2 身份工件 typed-data 冻结：`docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md`
 - v2 实施任务拆解（执行清单）：`AGENT_COMM_V2_TASK.md`
 - 最小复用入口（当前 runtime / v0.1）：`docs/AGENT_COMM_MIN_REUSE.md`
 - 用户说明书（当前 runtime）：`docs/AGENT_COMM_EXPLAINED.md`
@@ -145,11 +146,13 @@ VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:wallet:init --private-ke
 3. Inspect local identity:
 ```bash
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:identity
+npm run dev -- agent-comm:help
 ```
-4. Register a trusted peer:
+4. Register a trusted peer with the legacy/manual v1 fallback flow:
 ```bash
 npm run dev -- agent-comm:peer:trust peer-b 0x<peer_wallet_address> 0x<peer_pubkey>
 ```
+Planned v2 identity-artifact commands such as `agent-comm:card:export` and `agent-comm:card:import` are now reserved in CLI help, but their full workflow is not implemented in this phase.
 5. Send a command without wiring low-level modules:
 ```bash
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:send ping peer-b --echo hello

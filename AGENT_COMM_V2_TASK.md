@@ -3,6 +3,7 @@
 Status: execution plan  
 Date: 2026-03-07  
 Design baseline: `docs/AGENT_COMM_PROTOCOL_V2_DRAFT.md`, `docs/AGENT_COMM_V2_DESIGN.md`  
+Canonical artifact contracts: `docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md`  
 Related context: `docs/AGENT_COMM_EXPLAINED.md`, `docs/AGENT_COMM_PRIVACY_AND_TRUST_ANALYSIS.md`, `README.md`
 
 ## Purpose

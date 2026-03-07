@@ -112,11 +112,54 @@ function writeJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
+const plannedAgentCommCommands = new Set([
+  "agent-comm:card:export",
+  "agent-comm:card:import",
+  "agent-comm:contacts:list",
+  "agent-comm:connect:invite",
+  "agent-comm:connect:accept",
+  "agent-comm:connect:reject",
+]);
+
+function getAgentCommHelpText(): string {
+  return [
+    "Agent-Comm CLI",
+    "",
+    "Available now:",
+    "  agent-comm:wallet:init",
+    "  agent-comm:identity",
+    "  agent-comm:peer:trust    (legacy/manual v1 fallback)",
+    "  agent-comm:send <ping|start_discovery> <peerId>",
+    "",
+    "Planned v2 identity-artifact commands (reserved, not implemented in this phase):",
+    "  agent-comm:card:export",
+    "  agent-comm:card:import <file|url>",
+    "  agent-comm:contacts:list",
+    "  agent-comm:connect:invite <contactRef>",
+    "  agent-comm:connect:accept <contactRef>",
+    "  agent-comm:connect:reject <contactRef>",
+    "",
+    "Canonical typed-data contracts:",
+    "  docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md",
+  ].join("\n");
+}
+
 async function run(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config.logLevel);
   const argv = process.argv.slice(2);
   const command = argv[0];
+  if (command === "agent-comm:help") {
+    process.stdout.write(`${getAgentCommHelpText()}\n`);
+    return;
+  }
+
+  if (command && plannedAgentCommCommands.has(command)) {
+    throw new Error(
+      `${command} is reserved for the Agent-Comm v2 identity-artifact flow and is not implemented yet. See docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md and use agent-comm:help for current status.`,
+    );
+  }
+
   if (command === "vault:set") {
     const alias = argv[1];
     const value = argv[2];
@@ -202,7 +245,7 @@ async function run(): Promise<void> {
     const [peerId, walletAddress, pubkey] = parsed.positionals;
     if (!peerId || !walletAddress || !pubkey) {
       throw new Error(
-        "Usage: tsx src/index.ts agent-comm:peer:trust <peerId> <walletAddress> <pubkey> [--name <name>] [--capabilities ping,start_discovery] [--metadata '{\"k\":\"v\"}']",
+        "Usage: tsx src/index.ts agent-comm:peer:trust <peerId> <walletAddress> <pubkey> [--name <name>] [--capabilities ping,start_discovery] [--metadata '{\"k\":\"v\"}'] (legacy/manual v1 fallback)",
       );
     }
 
