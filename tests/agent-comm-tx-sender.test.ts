@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encodeEnvelope } from "../src/skills/alphaos/runtime/agent-comm/calldata-codec";
 import { restoreShadowWallet } from "../src/skills/alphaos/runtime/agent-comm/shadow-wallet";
-import { AGENT_COMM_ENVELOPE_VERSION, type EncryptedEnvelope } from "../src/skills/alphaos/runtime/agent-comm/types";
+import {
+  AGENT_COMM_LEGACY_ENVELOPE_VERSION,
+  type EncryptedEnvelopeV1,
+} from "../src/skills/alphaos/runtime/agent-comm/types";
 import { sendCalldata } from "../src/skills/alphaos/runtime/agent-comm/tx-sender";
 import { StateStore } from "../src/skills/alphaos/runtime/state-store";
 
@@ -41,9 +44,9 @@ function buildEnvelope(
   senderPubkey: string,
   recipient: string,
   nonce: string,
-): EncryptedEnvelope {
+): EncryptedEnvelopeV1 {
   return {
-    version: AGENT_COMM_ENVELOPE_VERSION,
+    version: AGENT_COMM_LEGACY_ENVELOPE_VERSION,
     senderPeerId: "peer-a",
     senderPubkey,
     recipient,
@@ -83,6 +86,8 @@ describe("tx-sender outbound status persistence", () => {
         store,
         outboundMessage: {
           peerId: "peer-a",
+          nonce: "nonce-sent",
+          commandType: "ping",
         },
       },
       wallet,
@@ -119,12 +124,14 @@ describe("tx-sender outbound status persistence", () => {
         {
           rpcUrl: "http://localhost:8545",
           chainId: 196,
-          walletAlias: "agent-comm",
-          store,
-          outboundMessage: {
-            peerId: "peer-a",
-          },
+        walletAlias: "agent-comm",
+        store,
+        outboundMessage: {
+          peerId: "peer-a",
+          nonce: "nonce-failed",
+          commandType: "ping",
         },
+      },
         wallet,
         recipient,
         calldata,

@@ -15,6 +15,7 @@ import {
   initTemporaryDemoWallet,
   listLocalIdentityProfiles,
   registerTrustedPeerEntry,
+  rotateCommWallet,
   sendCommConnectionAccept,
   sendCommConnectionConfirm,
   sendCommConnectionInvite,
@@ -72,6 +73,37 @@ function createDeps(prefix: string, overrides: Partial<AlphaOsConfig> = {}) {
   };
 }
 
+function decryptOutboundCommand(
+  requestData: string,
+  recipientPrivateKey: string,
+): {
+  envelope: ReturnType<typeof decodeEnvelope>;
+  command: { type: string; payload: Record<string, unknown> };
+  body?: Record<string, unknown>;
+} {
+  const envelope = decodeEnvelope(requestData);
+  if (envelope.version === 1) {
+    const sharedKey = deriveSharedKey(recipientPrivateKey, envelope.senderPubkey);
+    return {
+      envelope,
+      command: JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
+        type: string;
+        payload: Record<string, unknown>;
+      },
+    };
+  }
+
+  const sharedKey = deriveSharedKey(recipientPrivateKey, envelope.kex.ephemeralPubkey);
+  const body = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
+    command: { type: string; payload: Record<string, unknown> };
+  } & Record<string, unknown>;
+  return {
+    envelope,
+    command: body.command,
+    body,
+  };
+}
+
 afterEach(() => {
   process.env = { ...originalEnv };
   vi.clearAllMocks();
@@ -96,6 +128,7 @@ describe("agent-comm entrypoints", () => {
     expect(initialized.replaced).toBe(false);
     expect(identity.address).toBe(initialized.address);
     expect(identity.pubkey).toBe(initialized.pubkey);
+    expect(identity.identityWallet).not.toBe(identity.address);
     expect(identity.chainId).toBe(196);
     expect(identity.walletAlias).toBe("agent-comm");
     expect(identity.defaultSenderPeerId).toBe("agent-comm");
@@ -134,9 +167,11 @@ describe("agent-comm entrypoints", () => {
     );
     expect(imported.ok).toBe(true);
     expect(imported.contactId).toBeDefined();
-    expect(imported.identityWallet).toBe(exported.identity.address);
+    expect(imported.identityWallet).toBe(
+      exported.profiles.find((profile) => profile.role === "liw")?.walletAddress,
+    );
     expect(imported.status).toBe("imported");
-    expect(imported.activeTransportAddress).toBe(exported.identity.address);
+    expect(imported.activeTransportAddress).toBe(exported.identity.transportAddress);
 
     const profiles = listLocalIdentityProfiles(deps, {
       masterPassword: "pass123",
@@ -148,7 +183,7 @@ describe("agent-comm entrypoints", () => {
     expect(deps.store.getAgentContact(imported.contactId ?? "")).toEqual(
       expect.objectContaining({
         contactId: imported.contactId,
-        identityWallet: exported.identity.address,
+        identityWallet: exported.profiles.find((profile) => profile.role === "liw")?.walletAddress,
         status: "imported",
       }),
     );
@@ -230,6 +265,46 @@ describe("agent-comm entrypoints", () => {
     expect(imported.reasons[0]).toMatch(/invalid artifact bundle JSON/i);
   });
 
+  it("preserves legacy single-wallet installs as temporary dual-use until rotation", async () => {
+    const deps = createDeps("alphaos-comm-entry-");
+    const legacyPrivateKey =
+      "0x1212121212121212121212121212121212121212121212121212121212121212";
+    const rotatedPrivateKey =
+      "0x3434343434343434343434343434343434343434343434343434343434343434";
+    deps.vault.setSecret("agent-comm", legacyPrivateKey, "pass123");
+
+    const identityBefore = getCommIdentity(deps, {
+      masterPassword: "pass123",
+    });
+    expect(identityBefore.localIdentityMode).toBe("temporary_dual_use");
+    expect(identityBefore.identityWallet).toBe(identityBefore.transportAddress);
+
+    const rotated = await rotateCommWallet(deps, {
+      masterPassword: "pass123",
+      privateKey: rotatedPrivateKey,
+      nowUnixSeconds: Math.floor(Date.now() / 1000),
+    });
+
+    expect(rotated.previousTransportAddress).toBe(identityBefore.transportAddress);
+    expect(rotated.transportAddress).not.toBe(identityBefore.transportAddress);
+    expect(rotated.identityWallet).toBe(identityBefore.identityWallet);
+    expect(rotated.graceExpiresAt).toBeDefined();
+
+    const profiles = listLocalIdentityProfiles(deps, {
+      masterPassword: "pass123",
+    });
+    expect(profiles.find((profile) => profile.role === "liw")?.walletAddress).toBe(
+      identityBefore.identityWallet,
+    );
+    expect(profiles.find((profile) => profile.role === "acw")?.walletAddress).toBe(
+      rotated.transportAddress,
+    );
+    expect(
+      (profiles.find((profile) => profile.role === "acw")?.metadata?.graceReceiveKeys as unknown[])
+        ?.length,
+    ).toBe(1);
+  });
+
   it("initializes a temporary demo wallet profile without mutating LIW/ACW aliasing", () => {
     const deps = createDeps("alphaos-comm-entry-");
     initCommWallet(deps, {
@@ -245,7 +320,7 @@ describe("agent-comm entrypoints", () => {
     expect(demo.role).toBe("temporary_demo");
     expect(demo.walletAlias).toBe("agent-comm-demo");
     expect(deps.store.getAgentLocalIdentity("temporary_demo")?.walletAlias).toBe("agent-comm-demo");
-    expect(deps.store.getAgentLocalIdentity("liw")?.walletAlias).toBe("agent-comm");
+    expect(deps.store.getAgentLocalIdentity("liw")?.walletAlias).toBe("agent-comm-liw");
     expect(deps.store.getAgentLocalIdentity("acw")?.walletAlias).toBe("agent-comm");
   });
 
@@ -317,12 +392,11 @@ describe("agent-comm entrypoints", () => {
     const requestCall = sendTransaction.mock.calls[0];
     expect(requestCall).toBeDefined();
     const request = requestCall?.[0] as unknown as { data: string; to: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(peerWallet.privateKey, getCommIdentity(deps, { masterPassword: "pass123" }).pubkey);
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, string>;
-    };
+    const { envelope, command: plaintext } = decryptOutboundCommand(request.data, peerWallet.privateKey);
+    expect(envelope.version).toBe(1);
+    if (envelope.version !== 1) {
+      throw new Error("expected v1 envelope");
+    }
 
     expect(result.txHash).toBe("0xtx-ping");
     expect(result.peerId).toBe("peer-b");
@@ -386,12 +460,7 @@ describe("agent-comm entrypoints", () => {
     const requestCall = sendTransaction.mock.calls[0];
     expect(requestCall).toBeDefined();
     const request = requestCall?.[0] as unknown as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(peerWallet.privateKey, getCommIdentity(deps, { masterPassword: "pass123" }).pubkey);
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { command: plaintext } = decryptOutboundCommand(request.data, peerWallet.privateKey);
 
     expect(result.txHash).toBe("0xtx-discovery");
     expect(result.commandType).toBe("start_discovery");
@@ -458,23 +527,18 @@ describe("agent-comm entrypoints", () => {
     const requestCall = sendTransaction.mock.calls[0];
     expect(requestCall).toBeDefined();
     const request = requestCall?.[0] as unknown as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(
-      peerWallet.privateKey,
-      getCommIdentity(deps, { masterPassword: "pass123" }).pubkey,
-    );
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { envelope, command: plaintext } = decryptOutboundCommand(request.data, peerWallet.privateKey);
 
     expect(result.txHash).toBe("0xtx-invite");
     expect(result.commandType).toBe("connection_invite");
+    expect(result.envelopeVersion).toBe(2);
+    expect(envelope.version).toBe(2);
     expect(result.contactStatus).toBe("pending_outbound");
     expect(result.connectionEventType).toBe("connection_invite");
     expect(result.connectionEventStatus).toBe("pending");
     expect(plaintext).toEqual({
       type: "connection_invite",
+      schemaVersion: 2,
       payload: {
         requestedProfile: "research-collab",
         requestedCapabilities: ["ping", "start_discovery"],
@@ -546,15 +610,7 @@ describe("agent-comm entrypoints", () => {
     const requestCall = sendTransaction.mock.calls[0];
     expect(requestCall).toBeDefined();
     const request = requestCall?.[0] as unknown as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(
-      peerWallet.privateKey,
-      getCommIdentity(deps, { masterPassword: "pass123" }).pubkey,
-    );
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { command: plaintext } = decryptOutboundCommand(request.data, peerWallet.privateKey);
 
     expect(result.txHash).toBe("0xtx-accept");
     expect(result.commandType).toBe("connection_accept");
@@ -563,6 +619,7 @@ describe("agent-comm entrypoints", () => {
     expect(result.connectionEventStatus).toBe("applied");
     expect(plaintext).toEqual({
       type: "connection_accept",
+      schemaVersion: 2,
       payload: {
         capabilityProfile: "research-collab",
         capabilities: ["ping", "start_discovery"],
@@ -632,29 +689,23 @@ describe("agent-comm entrypoints", () => {
     });
 
     const request = sendTransaction.mock.calls[0]?.[0] as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(
-      peerWallet.privateKey,
-      getCommIdentity(deps, { masterPassword: "pass123" }).pubkey,
-    );
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { command: plaintext, body } = decryptOutboundCommand(request.data, peerWallet.privateKey);
 
     expect(plaintext.type).toBe("connection_invite");
-    const inlineCard = plaintext.payload.inlineCard as {
-      bundleVersion: number;
-      contactCard: { identityWallet: string; legacyPeerId: string };
-      transportBinding: { receiveAddress: string };
-    };
-    expect(inlineCard.bundleVersion).toBe(1);
-    expect(inlineCard.contactCard.identityWallet).toBe(
-      getCommIdentity(deps, { masterPassword: "pass123" }).address,
+    const inlineCard = (body?.attachments as {
+      inlineCard?: {
+        bundleVersion: number;
+        contactCard: { identityWallet: string; legacyPeerId: string };
+        transportBinding: { receiveAddress: string };
+      };
+    } | undefined)?.inlineCard;
+    expect(inlineCard?.bundleVersion).toBe(1);
+    expect(inlineCard?.contactCard.identityWallet).toBe(
+      getCommIdentity(deps, { masterPassword: "pass123" }).identityWallet,
     );
-    expect(inlineCard.contactCard.legacyPeerId).toBe("agent-comm");
-    expect(inlineCard.transportBinding.receiveAddress).toBe(
-      getCommIdentity(deps, { masterPassword: "pass123" }).address,
+    expect(inlineCard?.contactCard.legacyPeerId).toBe("agent-comm");
+    expect(inlineCard?.transportBinding.receiveAddress).toBe(
+      getCommIdentity(deps, { masterPassword: "pass123" }).transportAddress,
     );
 
     const outboundInvite = deps.store.listAgentConnectionEvents(10, {
@@ -730,19 +781,12 @@ describe("agent-comm entrypoints", () => {
     });
 
     const request = sendTransaction.mock.calls[0]?.[0] as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(
-      peerWallet.privateKey,
-      getCommIdentity(deps, { masterPassword: "pass123" }).pubkey,
-    );
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { command: plaintext } = decryptOutboundCommand(request.data, peerWallet.privateKey);
 
     expect(result.contactStatus).toBe("trusted");
     expect(plaintext).toEqual({
       type: "connection_accept",
+      schemaVersion: 2,
       payload: {
         capabilityProfile: "research-collab",
         capabilities: ["ping", "start_discovery"],
@@ -815,15 +859,7 @@ describe("agent-comm entrypoints", () => {
     const requestCall = sendTransaction.mock.calls[0];
     expect(requestCall).toBeDefined();
     const request = requestCall?.[0] as unknown as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(
-      peerWallet.privateKey,
-      getCommIdentity(deps, { masterPassword: "pass123" }).pubkey,
-    );
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { command: plaintext } = decryptOutboundCommand(request.data, peerWallet.privateKey);
 
     expect(result.txHash).toBe("0xtx-confirm");
     expect(result.commandType).toBe("connection_confirm");
@@ -832,6 +868,7 @@ describe("agent-comm entrypoints", () => {
     expect(result.connectionEventStatus).toBe("applied");
     expect(plaintext).toEqual({
       type: "connection_confirm",
+      schemaVersion: 2,
       payload: {
         note: "confirmed",
       },
@@ -901,15 +938,7 @@ describe("agent-comm entrypoints", () => {
     const requestCall = sendTransaction.mock.calls[0];
     expect(requestCall).toBeDefined();
     const request = requestCall?.[0] as unknown as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(
-      peerWallet.privateKey,
-      getCommIdentity(deps, { masterPassword: "pass123" }).pubkey,
-    );
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { command: plaintext } = decryptOutboundCommand(request.data, peerWallet.privateKey);
 
     expect(result.txHash).toBe("0xtx-reject");
     expect(result.commandType).toBe("connection_reject");
@@ -918,6 +947,7 @@ describe("agent-comm entrypoints", () => {
     expect(result.connectionEventStatus).toBe("applied");
     expect(plaintext).toEqual({
       type: "connection_reject",
+      schemaVersion: 2,
       payload: {
         reason: "policy",
         note: "not now",
@@ -983,23 +1013,19 @@ describe("agent-comm entrypoints", () => {
     });
 
     const request = sendTransaction.mock.calls[0]?.[0] as { data: string };
-    const envelope = decodeEnvelope(request.data);
-    const sharedKey = deriveSharedKey(
-      peerWallet.privateKey,
-      getCommIdentity(deps, { masterPassword: "pass123" }).pubkey,
-    );
-    const plaintext = JSON.parse(decrypt(envelope.ciphertext, sharedKey)) as {
-      type: string;
-      payload: Record<string, unknown>;
-    };
+    const { command: plaintext, body } = decryptOutboundCommand(request.data, peerWallet.privateKey);
     expect(plaintext.type).toBe("connection_confirm");
     expect(plaintext.payload).toEqual(
       expect.objectContaining({
         note: "confirmed with inline card",
+      }),
+    );
+    expect(body?.attachments).toEqual(
+      expect.objectContaining({
         inlineCard: expect.objectContaining({
           bundleVersion: 1,
           contactCard: expect.objectContaining({
-            identityWallet: getCommIdentity(deps, { masterPassword: "pass123" }).address,
+            identityWallet: getCommIdentity(deps, { masterPassword: "pass123" }).identityWallet,
           }),
         }),
       }),

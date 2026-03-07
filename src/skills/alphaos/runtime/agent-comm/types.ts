@@ -10,8 +10,12 @@ type IsEqual<A, B> =
       : false
     : false;
 
-export const AGENT_COMM_ENVELOPE_VERSION = 1;
-export const AGENT_COMM_DEFAULT_MAX_MESSAGE_BYTES = 4096;
+export const AGENT_COMM_LEGACY_ENVELOPE_VERSION = 1;
+export const AGENT_COMM_ENVELOPE_VERSION = 2;
+export const AGENT_COMM_DEFAULT_MAX_MESSAGE_BYTES = 16384;
+export const AGENT_COMM_PROTOCOL_V1 = "agent-comm/1";
+export const AGENT_COMM_PROTOCOL_V2 = "agent-comm/2";
+export const AGENT_COMM_KEX_SUITE_V2 = "secp256k1-ecdh-aes256gcm-v2";
 
 export const agentBusinessCommandTypes = [
   "ping",
@@ -205,6 +209,14 @@ export const agentCommandDescriptorSchema = z
   })
   .strict();
 
+export const versionedAgentCommandSchema = z
+  .object({
+    type: agentCommandTypeSchema,
+    schemaVersion: z.number().int().positive(),
+    payload: z.unknown(),
+  })
+  .strict();
+
 export const pingCommandSchema = z
   .object({
     type: z.literal("ping"),
@@ -304,9 +316,9 @@ export const x402ProofSchema = z
   })
   .strict();
 
-export const encryptedEnvelopeSchema = z
+export const encryptedEnvelopeV1Schema = z
   .object({
-    version: z.literal(AGENT_COMM_ENVELOPE_VERSION),
+    version: z.literal(AGENT_COMM_LEGACY_ENVELOPE_VERSION),
     senderPeerId: z.string().min(1),
     senderPubkey: z.string().min(1),
     recipient: z.string().min(1),
@@ -316,6 +328,58 @@ export const encryptedEnvelopeSchema = z
     x402: x402ProofSchema.optional(),
     ciphertext: z.string().min(1),
     signature: z.string().min(1),
+  })
+  .strict();
+
+export const encryptedEnvelopeV2Schema = z
+  .object({
+    version: z.literal(AGENT_COMM_ENVELOPE_VERSION),
+    kex: z
+      .object({
+        suite: z.literal(AGENT_COMM_KEX_SUITE_V2),
+        recipientKeyId: z.string().min(1),
+        ephemeralPubkey: z.string().min(1),
+      })
+      .strict(),
+    ciphertext: z.string().min(1),
+  })
+  .strict();
+
+export const encryptedEnvelopeSchema = z.union([
+  encryptedEnvelopeV1Schema,
+  encryptedEnvelopeV2Schema,
+]);
+
+export const encryptedEnvelopeV2PaymentSchema = z
+  .object({
+    asset: z.string().min(1).optional(),
+    amount: z.string().min(1).optional(),
+    metadata: jsonObjectSchema.optional(),
+  })
+  .strict();
+
+export const encryptedEnvelopeV2AttachmentsSchema = z
+  .object({
+    inlineCard: signedIdentityArtifactBundleSchema.optional(),
+  })
+  .strict();
+
+export const encryptedEnvelopeV2SenderSchema = z
+  .object({
+    identityWallet: evmAddressSchema,
+    transportAddress: evmAddressSchema,
+    cardDigest: bytes32HexSchema.optional(),
+  })
+  .strict();
+
+export const encryptedEnvelopeV2BodySchema = z
+  .object({
+    msgId: z.string().uuid(),
+    sentAt: z.string().min(1),
+    sender: encryptedEnvelopeV2SenderSchema,
+    command: versionedAgentCommandSchema,
+    payment: encryptedEnvelopeV2PaymentSchema.optional(),
+    attachments: encryptedEnvelopeV2AttachmentsSchema.optional(),
   })
   .strict();
 
@@ -342,10 +406,12 @@ export const agentMessageSchema = z
     nonce: z.string().min(1),
     commandType: agentCommandTypeSchema,
     envelopeVersion: z.number().int().positive().optional(),
+    msgId: z.string().uuid().optional(),
     contactId: z.string().min(1).optional(),
     identityWallet: z.string().min(1).optional(),
     transportAddress: z.string().min(1).optional(),
     trustOutcome: z.string().min(1).optional(),
+    decryptedCommandType: agentCommandTypeSchema.optional(),
     ciphertext: z.string().min(1),
     status: agentMessageStatusSchema,
     error: z.string().optional(),
@@ -550,6 +616,7 @@ export type ConnectionAcceptCommandPayload = z.infer<typeof connectionAcceptComm
 export type ConnectionRejectCommandPayload = z.infer<typeof connectionRejectCommandPayloadSchema>;
 export type ConnectionConfirmCommandPayload = z.infer<typeof connectionConfirmCommandPayloadSchema>;
 export type AgentCommandDescriptor = z.infer<typeof agentCommandDescriptorSchema>;
+export type VersionedAgentCommand = z.infer<typeof versionedAgentCommandSchema>;
 export type PingCommand = z.infer<typeof pingCommandSchema>;
 export type ProbeOnchainOsCommand = z.infer<typeof probeOnchainOsCommandSchema>;
 export type StartDiscoveryCommand = z.infer<typeof startDiscoveryCommandSchema>;
@@ -562,7 +629,10 @@ export type ConnectionRejectCommand = z.infer<typeof connectionRejectCommandSche
 export type ConnectionConfirmCommand = z.infer<typeof connectionConfirmCommandSchema>;
 export type AgentCommand = z.infer<typeof agentCommandSchema>;
 export type X402Proof = z.infer<typeof x402ProofSchema>;
+export type EncryptedEnvelopeV1 = z.infer<typeof encryptedEnvelopeV1Schema>;
+export type EncryptedEnvelopeV2 = z.infer<typeof encryptedEnvelopeV2Schema>;
 export type EncryptedEnvelope = z.infer<typeof encryptedEnvelopeSchema>;
+export type EncryptedEnvelopeV2Body = z.infer<typeof encryptedEnvelopeV2BodySchema>;
 export type AgentPeer = z.infer<typeof agentPeerSchema>;
 export type AgentMessage = z.infer<typeof agentMessageSchema>;
 export type AgentMessageReceipt = z.infer<typeof agentMessageReceiptSchema>;

@@ -26,6 +26,8 @@ const stateStoreCtorMock = vi.hoisted(() =>
   }),
 );
 const vaultCtorMock = vi.hoisted(() => vi.fn(function MockVaultService(_store: unknown) {}));
+const bootstrapAgentCommStateMock = vi.hoisted(() => vi.fn());
+const rotateCommWalletMock = vi.hoisted(() => vi.fn());
 const sendCommConnectionInviteMock = vi.hoisted(() => vi.fn());
 const sendCommConnectionAcceptMock = vi.hoisted(() => vi.fn());
 const sendCommConnectionRejectMock = vi.hoisted(() => vi.fn());
@@ -47,6 +49,7 @@ vi.mock("../src/skills/alphaos/runtime/vault", () => ({
 }));
 
 vi.mock("../src/skills/alphaos/runtime/agent-comm/entrypoints", () => ({
+  bootstrapAgentCommState: bootstrapAgentCommStateMock,
   exportIdentityArtifactBundle: vi.fn(),
   getCommIdentity: vi.fn(),
   importIdentityArtifactBundleFromJson: vi.fn(),
@@ -54,6 +57,7 @@ vi.mock("../src/skills/alphaos/runtime/agent-comm/entrypoints", () => ({
   initTemporaryDemoWallet: vi.fn(),
   listLocalIdentityProfiles: vi.fn(),
   registerTrustedPeerEntry: vi.fn(),
+  rotateCommWallet: rotateCommWalletMock,
   sendCommConnectionAccept: sendCommConnectionAcceptMock,
   sendCommConnectionInvite: sendCommConnectionInviteMock,
   sendCommConnectionReject: sendCommConnectionRejectMock,
@@ -96,6 +100,20 @@ beforeEach(() => {
   listAgentSignedArtifactsMock.mockReturnValue([]);
   listAgentTransportEndpointsMock.mockReturnValue([]);
   listAgentConnectionEventsMock.mockReturnValue([]);
+  bootstrapAgentCommStateMock.mockReturnValue({
+    legacyPeerBackfill: {
+      processedPeers: 0,
+      createdContacts: 0,
+      updatedContacts: 0,
+      createdTransportEndpoints: 0,
+      updatedTransportEndpoints: 0,
+    },
+  });
+  rotateCommWalletMock.mockResolvedValue({
+    txHash: "0xtx-rotate",
+    previousTransportAddress: "0xold",
+    transportAddress: "0xnew",
+  });
   sendCommConnectionInviteMock.mockResolvedValue({
     txHash: "0xtx-invite",
     contactId: "ct_invite",
@@ -126,6 +144,8 @@ describe("agent-comm CLI contact/connect commands", () => {
     expect(output).toContain("--attach-inline-card");
     expect(output).toContain("agent-comm:connect:reject <contactRef>");
     expect(output).toContain("agent-comm:peer:trust    (legacy/manual v1 fallback)");
+    expect(output).toContain("agent-comm:wallet:rotate");
+    expect(output).toContain("Preferred flow: add contact via card import, then connect via invite/accept.");
     expect(output).toContain("contactRef currently accepts contactId only.");
     expect(output).not.toContain("reserved, not implemented in this phase");
   });
@@ -161,6 +181,9 @@ describe("agent-comm CLI contact/connect commands", () => {
             outbound: 0,
             total: 0,
           },
+          legacyMarkers: [],
+          legacyProtocolOnly: false,
+          legacyManualPeerRecord: false,
         },
       ],
     });
@@ -278,6 +301,48 @@ describe("agent-comm CLI contact/connect commands", () => {
       action: "agent-comm:connect:reject",
       txHash: "0xtx-reject",
       contactId: "ct_reject",
+    });
+  });
+
+  it("forwards wallet rotate flags to the entrypoint", async () => {
+    rotateCommWalletMock.mockResolvedValue({
+      transportAddress: "0x9999999999999999999999999999999999999999",
+      previousTransportAddress: "0x1111111111111111111111111111111111111111",
+      graceExpiresAt: "2026-03-09T00:00:00.000Z",
+    });
+
+    const output = await runCli([
+      "agent-comm:wallet:rotate",
+      "--grace-period-hours",
+      "48",
+      "--display-name",
+      "Rotated",
+      "--capability-profile",
+      "research-collab",
+      "--capabilities",
+      "ping,start_discovery",
+    ]);
+
+    expect(rotateCommWalletMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          dataDir: "/tmp/agent-comm-cli",
+        }),
+        store: expect.any(Object),
+        vault: expect.any(Object),
+      }),
+      {
+        gracePeriodHours: 48,
+        displayName: "Rotated",
+        capabilityProfile: "research-collab",
+        capabilities: ["ping", "start_discovery"],
+      },
+    );
+    expect(JSON.parse(output)).toEqual({
+      action: "agent-comm:wallet:rotate",
+      transportAddress: "0x9999999999999999999999999999999999999999",
+      previousTransportAddress: "0x1111111111111111111111111111111111111111",
+      graceExpiresAt: "2026-03-09T00:00:00.000Z",
     });
   });
 });

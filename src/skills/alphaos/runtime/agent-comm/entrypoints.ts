@@ -4,6 +4,18 @@ import type { StateStore } from "../state-store";
 import type { VaultService } from "../vault";
 import { encodeEnvelope } from "./calldata-codec";
 import { deriveSharedKey, encrypt } from "./ecdh-crypto";
+import {
+  AGENT_COMM_DEFAULT_ACW_ROTATION_GRACE_HOURS,
+  ensureLegacyDualUseLocalIdentityProfiles,
+  initializeDistinctLocalIdentityState,
+  resolveLocalIdentityState,
+  rotateLocalCommWallet,
+  type ResolvedLocalIdentityState,
+} from "./local-identity";
+import {
+  getLocalSupportedProtocols,
+  negotiateProtocolVersion,
+} from "./protocol-negotiation";
 import { registerPeer } from "./peer-registry";
 import { generateShadowWallet, restoreShadowWallet, type ShadowWallet } from "./shadow-wallet";
 import { sendCalldata, type SendResult } from "./tx-sender";
@@ -19,8 +31,11 @@ import {
   verifySignedIdentityArtifactBundle,
 } from "./artifact-workflow";
 import {
+  AGENT_COMM_KEX_SUITE_V2,
+  AGENT_COMM_LEGACY_ENVELOPE_VERSION,
   AGENT_COMM_ENVELOPE_VERSION,
   agentCommandSchema,
+  encryptedEnvelopeV2BodySchema,
   type AgentCommand,
   type AgentConnectionEvent,
   type AgentConnectionEventStatus,
@@ -64,6 +79,11 @@ export interface AgentCommIdentity {
   chainId: number;
   walletAlias: string;
   defaultSenderPeerId: string;
+  identityWallet: string;
+  transportAddress: string;
+  transportKeyId?: string;
+  localIdentityMode: AgentLocalIdentity["mode"];
+  supportedProtocols: string[];
 }
 
 export interface InitCommWalletOptions {
@@ -75,10 +95,37 @@ export interface InitCommWalletOptions {
 export interface InitCommWalletResult extends AgentCommIdentity {
   source: "generated" | "restored";
   replaced: boolean;
+  reusedExisting?: boolean;
 }
 
 export interface InitTemporaryDemoWalletOptions extends InitCommWalletOptions {
   walletAlias?: string;
+}
+
+export interface RotateCommWalletOptions {
+  masterPassword?: string;
+  gracePeriodHours?: number;
+  privateKey?: string;
+  senderPeerId?: string;
+  displayName?: string;
+  handle?: string;
+  capabilityProfile?: string;
+  capabilities?: string[];
+  expiresInDays?: number;
+  keyId?: string;
+  legacyPeerId?: string;
+  nowUnixSeconds?: number;
+}
+
+export interface RotateCommWalletResult extends AgentCommIdentity {
+  previousTransportAddress: string;
+  previousTransportKeyId?: string;
+  archivedWalletAlias: string;
+  graceExpiresAt: string;
+  contactCardDigest: string;
+  contactCardFingerprint: string;
+  transportBindingDigest: string;
+  transportBindingFingerprint: string;
 }
 
 export interface InitTemporaryDemoWalletResult extends AgentCommIdentity {
@@ -108,6 +155,10 @@ export interface SendCommCommandResult extends AgentCommIdentity, SendResult {
   recipient: string;
   senderPeerId: string;
   commandType: AgentCommand["type"];
+  envelopeVersion: number;
+  msgId?: string;
+  contactId?: string;
+  legacyFallbackUsed: boolean;
 }
 
 interface ResolvedCommRecipient {
@@ -203,8 +254,13 @@ export interface ImportIdentityArtifactBundleResult {
   transportBindingFingerprint?: string;
 }
 
+export interface BootstrapAgentCommStateResult {
+  legacyPeerBackfill: ReturnType<StateStore["backfillAgentContactsFromLegacyPeers"]>;
+  localIdentity?: AgentCommIdentity;
+}
+
 interface ResolvedLocalWallet {
-  wallet: ShadowWallet;
+  state: ResolvedLocalIdentityState;
   identity: AgentCommIdentity;
 }
 
@@ -230,16 +286,20 @@ function resolveSenderPeerId(config: AlphaOsConfig, senderPeerId?: string): stri
 
 function toIdentity(
   config: AlphaOsConfig,
-  wallet: ShadowWallet,
+  state: ResolvedLocalIdentityState,
   senderPeerId?: string,
-  walletAlias = config.commWalletAlias,
 ): AgentCommIdentity {
   return {
-    address: wallet.getAddress(),
-    pubkey: wallet.getPublicKey(),
+    address: state.acwWallet.getAddress(),
+    pubkey: state.acwWallet.getPublicKey(),
     chainId: config.commChainId,
-    walletAlias,
+    walletAlias: state.acwProfile.walletAlias,
     defaultSenderPeerId: resolveSenderPeerId(config, senderPeerId),
+    identityWallet: state.liwProfile.identityWallet,
+    transportAddress: state.acwWallet.getAddress(),
+    transportKeyId: state.acwProfile.transportKeyId,
+    localIdentityMode: state.acwProfile.mode,
+    supportedProtocols: getLocalSupportedProtocols(),
   };
 }
 
@@ -248,11 +308,54 @@ function resolveLocalWallet(
   masterPassword: string,
   senderPeerId?: string,
 ): ResolvedLocalWallet {
-  const privateKey = deps.vault.getSecret(deps.config.commWalletAlias, masterPassword);
-  const wallet = restoreShadowWallet(privateKey);
+  const state = resolveLocalIdentityState(deps, masterPassword);
   return {
-    wallet,
-    identity: toIdentity(deps.config, wallet, senderPeerId),
+    state,
+    identity: toIdentity(deps.config, state, senderPeerId),
+  };
+}
+
+function hasConfiguredLocalIdentityProfiles(store: StateStore): boolean {
+  return Boolean(store.getAgentLocalIdentity("liw") && store.getAgentLocalIdentity("acw"));
+}
+
+function upsertConfiguredAcwProfile(
+  deps: AgentCommEntrypointDependencies,
+  state: ResolvedLocalIdentityState,
+  wallet: ShadowWallet,
+): void {
+  deps.store.upsertAgentLocalIdentity({
+    role: "acw",
+    walletAlias: deps.config.commWalletAlias,
+    walletAddress: wallet.getAddress(),
+    identityWallet: state.liwProfile.identityWallet,
+    chainId: deps.config.commChainId,
+    mode: state.acwProfile.mode,
+    activeBindingDigest: state.acwProfile.activeBindingDigest,
+    transportKeyId: state.acwProfile.transportKeyId,
+    metadata: state.acwProfile.metadata,
+  });
+}
+
+export function bootstrapAgentCommState(
+  deps: AgentCommEntrypointDependencies,
+  options: { masterPassword?: string; senderPeerId?: string } = {},
+): BootstrapAgentCommStateResult {
+  const legacyPeerBackfill = deps.store.backfillAgentContactsFromLegacyPeers({
+    chainId: deps.config.commChainId,
+  });
+
+  const resolvedMasterPassword = options.masterPassword ?? process.env.VAULT_MASTER_PASSWORD;
+  const localIdentity = deps.store.getVaultItem(deps.config.commWalletAlias) && resolvedMasterPassword
+    ? getCommIdentity(deps, {
+        masterPassword: resolvedMasterPassword,
+        senderPeerId: options.senderPeerId,
+      })
+    : undefined;
+
+  return {
+    legacyPeerBackfill,
+    localIdentity,
   };
 }
 
@@ -501,37 +604,6 @@ function classifyIdentityArtifactFailures(reasons: string[]): IdentityArtifactFa
   return [...new Set(codes)];
 }
 
-function ensureLegacyDualUseIdentityProfiles(
-  deps: Pick<AgentCommEntrypointDependencies, "config" | "store">,
-  wallet: ShadowWallet,
-  acwPatch: {
-    activeBindingDigest?: string;
-    transportKeyId?: string;
-  } = {},
-): AgentLocalIdentity[] {
-  const walletAddress = wallet.getAddress();
-  const sharedInput = {
-    walletAlias: deps.config.commWalletAlias,
-    walletAddress,
-    identityWallet: walletAddress,
-    chainId: deps.config.commChainId,
-    mode: "temporary_dual_use" as const,
-  };
-  const liw = deps.store.upsertAgentLocalIdentity({
-    role: "liw",
-    ...sharedInput,
-  });
-  const acw = deps.store.upsertAgentLocalIdentity({
-    role: "acw",
-    ...sharedInput,
-    activeBindingDigest: acwPatch.activeBindingDigest,
-    transportKeyId: acwPatch.transportKeyId,
-  });
-
-  const temporaryDemo = deps.store.getAgentLocalIdentity("temporary_demo");
-  return temporaryDemo ? [liw, acw, temporaryDemo] : [liw, acw];
-}
-
 function persistSignedContactCardArtifact(
   store: StateStore,
   artifact: AgentCommSignedContactCardArtifact,
@@ -658,7 +730,6 @@ export function getCommIdentity(
 ): AgentCommIdentity {
   const masterPassword = getRequiredMasterPassword(options.masterPassword);
   const local = resolveLocalWallet(deps, masterPassword, options.senderPeerId);
-  ensureLegacyDualUseIdentityProfiles(deps, local.wallet);
   return local.identity;
 }
 
@@ -667,18 +738,75 @@ export function initCommWallet(
   options: InitCommWalletOptions = {},
 ): InitCommWalletResult {
   const masterPassword = getRequiredMasterPassword(options.masterPassword);
-  const wallet = options.privateKey
-    ? restoreShadowWallet(options.privateKey)
-    : generateShadowWallet();
-  const replaced = deps.store.getVaultItem(deps.config.commWalletAlias) !== null;
+  const existingVaultItem = deps.store.getVaultItem(deps.config.commWalletAlias);
+  const configuredProfiles = hasConfiguredLocalIdentityProfiles(deps.store);
 
-  deps.vault.setSecret(deps.config.commWalletAlias, wallet.privateKey, masterPassword);
-  ensureLegacyDualUseIdentityProfiles(deps, wallet);
+  if (!existingVaultItem && !configuredProfiles) {
+    const state = initializeDistinctLocalIdentityState(deps, {
+      masterPassword,
+      acwPrivateKey: options.privateKey,
+    });
+    const identity = toIdentity(deps.config, state, options.senderPeerId);
+    return {
+      ...identity,
+      source: options.privateKey ? "restored" : "generated",
+      replaced: false,
+    };
+  }
 
+  if (existingVaultItem && !configuredProfiles) {
+    const wallet = options.privateKey
+      ? restoreShadowWallet(options.privateKey)
+      : restoreShadowWallet(deps.vault.getSecret(deps.config.commWalletAlias, masterPassword));
+    if (options.privateKey) {
+      deps.vault.setSecret(deps.config.commWalletAlias, wallet.privateKey, masterPassword);
+    }
+    ensureLegacyDualUseLocalIdentityProfiles(deps, wallet);
+    const state = resolveLocalIdentityState(deps, masterPassword);
+    const identity = toIdentity(deps.config, state, options.senderPeerId);
+    return {
+      ...identity,
+      source: options.privateKey ? "restored" : "generated",
+      replaced: Boolean(options.privateKey),
+    };
+  }
+
+  if (options.privateKey) {
+    const current = resolveLocalIdentityState(deps, masterPassword);
+    const restoredWallet = restoreShadowWallet(options.privateKey);
+
+    if (current.acwProfile.mode === "temporary_dual_use") {
+      deps.vault.setSecret(deps.config.commWalletAlias, restoredWallet.privateKey, masterPassword);
+      ensureLegacyDualUseLocalIdentityProfiles(
+        deps,
+        restoredWallet,
+        {
+          activeBindingDigest: current.acwProfile.activeBindingDigest,
+          transportKeyId: current.acwProfile.transportKeyId,
+          metadata: current.acwProfile.metadata,
+        },
+      );
+    } else {
+      deps.vault.setSecret(deps.config.commWalletAlias, restoredWallet.privateKey, masterPassword);
+      upsertConfiguredAcwProfile(deps, current, restoredWallet);
+    }
+
+    const state = resolveLocalIdentityState(deps, masterPassword);
+    const identity = toIdentity(deps.config, state, options.senderPeerId);
+    return {
+      ...identity,
+      source: "restored",
+      replaced: true,
+    };
+  }
+
+  const state = resolveLocalIdentityState(deps, masterPassword);
+  const identity = toIdentity(deps.config, state, options.senderPeerId);
   return {
-    ...toIdentity(deps.config, wallet, options.senderPeerId),
-    source: options.privateKey ? "restored" : "generated",
-    replaced,
+    ...identity,
+    source: "generated",
+    replaced: false,
+    reusedExisting: true,
   };
 }
 
@@ -708,7 +836,15 @@ export function initTemporaryDemoWallet(
   });
 
   return {
-    ...toIdentity(deps.config, wallet, options.senderPeerId, walletAlias),
+    address: wallet.getAddress(),
+    pubkey: wallet.getPublicKey(),
+    chainId: deps.config.commChainId,
+    walletAlias,
+    defaultSenderPeerId: resolveSenderPeerId(deps.config, options.senderPeerId),
+    identityWallet: wallet.getAddress(),
+    transportAddress: wallet.getAddress(),
+    localIdentityMode: "standard",
+    supportedProtocols: getLocalSupportedProtocols(),
     source: options.privateKey ? "restored" : "generated",
     replaced,
     role: "temporary_demo",
@@ -742,8 +878,50 @@ export function listLocalIdentityProfiles(
   }
 
   const masterPassword = getRequiredMasterPassword(options.masterPassword);
-  const local = resolveLocalWallet(deps, masterPassword);
-  return ensureLegacyDualUseIdentityProfiles(deps, local.wallet);
+  const local = resolveLocalIdentityState(deps, masterPassword);
+  const temporaryDemo = deps.store.getAgentLocalIdentity("temporary_demo");
+  return temporaryDemo
+    ? [local.liwProfile, local.acwProfile, temporaryDemo]
+    : [local.liwProfile, local.acwProfile];
+}
+
+export async function rotateCommWallet(
+  deps: AgentCommEntrypointDependencies,
+  options: RotateCommWalletOptions = {},
+): Promise<RotateCommWalletResult> {
+  const masterPassword = getRequiredMasterPassword(options.masterPassword);
+  const rotated = rotateLocalCommWallet(deps, {
+    masterPassword,
+    gracePeriodHours: options.gracePeriodHours,
+    privateKey: options.privateKey,
+    now: options.nowUnixSeconds !== undefined
+      ? new Date(options.nowUnixSeconds * 1000)
+      : undefined,
+  });
+
+  const exported = await exportIdentityArtifactBundle(deps, {
+    masterPassword,
+    displayName: options.displayName,
+    handle: options.handle,
+    capabilityProfile: options.capabilityProfile,
+    capabilities: options.capabilities,
+    expiresInDays: options.expiresInDays,
+    keyId: options.keyId,
+    legacyPeerId: options.legacyPeerId,
+    nowUnixSeconds: options.nowUnixSeconds,
+  });
+
+  return {
+    ...exported.identity,
+    previousTransportAddress: rotated.previousTransportAddress,
+    previousTransportKeyId: rotated.previousTransportKeyId,
+    archivedWalletAlias: rotated.archivedWalletAlias,
+    graceExpiresAt: rotated.graceExpiresAt,
+    contactCardDigest: exported.contactCardDigest,
+    contactCardFingerprint: exported.contactCardFingerprint,
+    transportBindingDigest: exported.transportBindingDigest,
+    transportBindingFingerprint: exported.transportBindingFingerprint,
+  };
 }
 
 export async function exportIdentityArtifactBundle(
@@ -765,9 +943,9 @@ export async function exportIdentityArtifactBundle(
 
   const capabilities = options.capabilities?.map((value) => value.trim()).filter(Boolean);
   const artifacts = buildLocalIdentityArtifacts({
-    identityWallet: local.identity.address,
-    transportAddress: local.identity.address,
-    transportPubkey: local.identity.pubkey,
+    identityWallet: local.state.liwWallet.getAddress(),
+    transportAddress: local.state.acwWallet.getAddress(),
+    transportPubkey: local.state.acwWallet.getPublicKey(),
     chainId: deps.config.commChainId,
     displayName,
     handle: options.handle,
@@ -782,7 +960,7 @@ export async function exportIdentityArtifactBundle(
 
   const bundle = await signIdentityArtifactBundle({
     ...artifacts,
-    signerPrivateKey: local.wallet.privateKey,
+    signerPrivateKey: local.state.liwWallet.privateKey,
     exportedAt: nowUnixSeconds,
   });
 
@@ -811,10 +989,20 @@ export async function exportIdentityArtifactBundle(
     "local_export",
     "verified",
   );
-
-  const profiles = ensureLegacyDualUseIdentityProfiles(deps, local.wallet, {
+  deps.store.upsertAgentLocalIdentity({
+    role: "acw",
+    walletAlias: local.state.acwProfile.walletAlias,
+    walletAddress: local.state.acwWallet.getAddress(),
+    identityWallet: local.state.liwProfile.identityWallet,
+    chainId: deps.config.commChainId,
+    mode: local.state.acwProfile.mode,
     activeBindingDigest: verification.transportBinding.digest,
     transportKeyId: keyId,
+    metadata: local.state.acwProfile.metadata,
+  });
+
+  const profiles = listLocalIdentityProfiles(deps, {
+    masterPassword,
   });
 
   return {
@@ -922,13 +1110,113 @@ export async function importIdentityArtifactBundleFromJson(
 
 export type IdentityArtifactFailureCode = (typeof identityArtifactFailureCodes)[number];
 
-async function sendCommCommandToRecipient(
+function findLocalContactCardDigest(
+  store: StateStore,
+  input: {
+    identityWallet: string;
+    transportAddress: string;
+    transportKeyId?: string;
+  },
+): string | undefined {
+  const artifacts = store.listAgentSignedArtifacts(100, {
+    identityWallet: input.identityWallet,
+    artifactType: "ContactCard",
+  });
+  for (const artifact of artifacts) {
+    if (artifact.verificationStatus !== "verified") {
+      continue;
+    }
+    const payload = artifact.payload as Record<string, unknown>;
+    const transport = payload.transport;
+    if (!transport || typeof transport !== "object") {
+      continue;
+    }
+    const receiveAddress =
+      typeof (transport as Record<string, unknown>).receiveAddress === "string"
+        ? ((transport as Record<string, unknown>).receiveAddress as string)
+        : undefined;
+    const keyId =
+      typeof (transport as Record<string, unknown>).keyId === "string"
+        ? ((transport as Record<string, unknown>).keyId as string)
+        : undefined;
+    if (
+      receiveAddress?.toLowerCase() === input.transportAddress.toLowerCase()
+      && (!input.transportKeyId || keyId === input.transportKeyId)
+    ) {
+      return artifact.digest;
+    }
+  }
+  return undefined;
+}
+
+async function ensureLocalOutboundArtifacts(
+  deps: AgentCommEntrypointDependencies,
+  options: {
+    masterPassword?: string;
+    senderPeerId?: string;
+  },
+): Promise<{
+  local: ResolvedLocalWallet;
+  contactCardDigest: string;
+  transportBindingDigest: string;
+}> {
+  const masterPassword = getRequiredMasterPassword(options.masterPassword);
+  const local = resolveLocalWallet(deps, masterPassword, options.senderPeerId);
+  const existingBindingDigest = local.state.acwProfile.activeBindingDigest;
+  const existingCardDigest = findLocalContactCardDigest(deps.store, {
+    identityWallet: local.state.liwProfile.identityWallet,
+    transportAddress: local.state.acwWallet.getAddress(),
+    transportKeyId: local.state.acwProfile.transportKeyId,
+  });
+
+  if (existingBindingDigest && existingCardDigest) {
+    return {
+      local,
+      contactCardDigest: existingCardDigest,
+      transportBindingDigest: existingBindingDigest,
+    };
+  }
+
+  const exported = await exportIdentityArtifactBundle(deps, {
+    masterPassword,
+    keyId: local.state.acwProfile.transportKeyId,
+    legacyPeerId: resolveSenderPeerId(deps.config, options.senderPeerId),
+  });
+
+  return {
+    local: resolveLocalWallet(deps, masterPassword, options.senderPeerId),
+    contactCardDigest: exported.contactCardDigest,
+    transportBindingDigest: exported.transportBindingDigest,
+  };
+}
+
+function resolveContactTargetForTrustedPeer(
+  store: StateStore,
+  peer: AgentPeer,
+): ResolvedOutboundContactTarget | null {
+  const contact =
+    store.getAgentContactByLegacyPeerId(peer.peerId)
+    ?? store.getAgentContactByIdentityWallet(peer.walletAddress);
+  if (!contact) {
+    return null;
+  }
+  const endpoint = resolveActiveContactEndpoint(store, contact.contactId);
+  return {
+    contact,
+    endpoint,
+    peerId: peer.peerId,
+  };
+}
+
+async function sendCommCommandV1ToRecipient(
   deps: AgentCommEntrypointDependencies,
   options: {
     masterPassword?: string;
     senderPeerId?: string;
     recipient: ResolvedCommRecipient;
     command: AgentCommand;
+    contact?: AgentContact;
+    legacyFallbackUsed?: boolean;
   },
 ): Promise<SendCommCommandResult> {
   const command = agentCommandSchema.parse(options.command);
@@ -937,10 +1225,10 @@ async function sendCommCommandToRecipient(
   const senderPeerId = resolveSenderPeerId(deps.config, options.senderPeerId);
   const nonce = crypto.randomUUID();
   const timestamp = new Date().toISOString();
-  const sharedKey = deriveSharedKey(local.wallet.privateKey, options.recipient.pubkey);
+  const sharedKey = deriveSharedKey(local.state.acwWallet.privateKey, options.recipient.pubkey);
   const ciphertext = encrypt(JSON.stringify(command), sharedKey);
   const calldata = encodeEnvelope({
-    version: AGENT_COMM_ENVELOPE_VERSION,
+    version: AGENT_COMM_LEGACY_ENVELOPE_VERSION,
     senderPeerId,
     senderPubkey: local.identity.pubkey,
     recipient: options.recipient.walletAddress,
@@ -957,13 +1245,21 @@ async function sendCommCommandToRecipient(
     {
       rpcUrl: getRequiredCommRpcUrl(deps.config),
       chainId: deps.config.commChainId,
-      walletAlias: deps.config.commWalletAlias,
+      walletAlias: local.state.acwProfile.walletAlias,
       store: deps.store,
       outboundMessage: {
         peerId: options.recipient.peerId,
+        nonce,
+        commandType: command.type,
+        envelopeVersion: AGENT_COMM_LEGACY_ENVELOPE_VERSION,
+        contactId: options.contact?.contactId,
+        identityWallet: options.contact?.identityWallet,
+        transportAddress: options.recipient.walletAddress,
+        trustOutcome: options.legacyFallbackUsed ? "legacy_fallback_v1" : undefined,
+        decryptedCommandType: command.type,
       },
     },
-    local.wallet,
+    local.state.acwWallet,
     options.recipient.walletAddress,
     calldata,
   );
@@ -975,6 +1271,100 @@ async function sendCommCommandToRecipient(
     recipient: options.recipient.walletAddress,
     senderPeerId,
     commandType: command.type,
+    envelopeVersion: AGENT_COMM_LEGACY_ENVELOPE_VERSION,
+    contactId: options.contact?.contactId,
+    legacyFallbackUsed: Boolean(options.legacyFallbackUsed),
+  };
+}
+
+async function sendCommCommandV2ToContact(
+  deps: AgentCommEntrypointDependencies,
+  options: {
+    masterPassword?: string;
+    senderPeerId?: string;
+    target: ResolvedOutboundContactTarget;
+    command: AgentCommand;
+    inlineCard?: AgentCommSignedIdentityArtifactBundle;
+  },
+): Promise<SendCommCommandResult> {
+  const command = agentCommandSchema.parse(options.command);
+  const masterPassword = getRequiredMasterPassword(options.masterPassword);
+  const outboundArtifacts = await ensureLocalOutboundArtifacts(deps, {
+    masterPassword,
+    senderPeerId: options.senderPeerId,
+  });
+  const local = outboundArtifacts.local;
+  const senderPeerId = resolveSenderPeerId(deps.config, options.senderPeerId);
+  const msgId = crypto.randomUUID();
+  const sentAt = new Date().toISOString();
+  const ephemeralWallet = generateShadowWallet();
+  const sharedKey = deriveSharedKey(ephemeralWallet.privateKey, options.target.endpoint.pubkey);
+  const body = encryptedEnvelopeV2BodySchema.parse({
+    msgId,
+    sentAt,
+    sender: {
+      identityWallet: local.identity.identityWallet,
+      transportAddress: local.identity.transportAddress,
+      cardDigest: outboundArtifacts.contactCardDigest,
+    },
+    command: {
+      type: command.type,
+      schemaVersion: 2,
+      payload: command.payload,
+    },
+    ...(options.inlineCard
+      ? {
+          attachments: {
+            inlineCard: options.inlineCard,
+          },
+        }
+      : {}),
+  });
+  const ciphertext = encrypt(JSON.stringify(body), sharedKey);
+  const calldata = encodeEnvelope({
+    version: AGENT_COMM_ENVELOPE_VERSION,
+    kex: {
+      suite: AGENT_COMM_KEX_SUITE_V2,
+      recipientKeyId: options.target.endpoint.keyId,
+      ephemeralPubkey: ephemeralWallet.getPublicKey(),
+    },
+    ciphertext,
+  });
+  const result = await sendCalldata(
+    {
+      rpcUrl: getRequiredCommRpcUrl(deps.config),
+      chainId: deps.config.commChainId,
+      walletAlias: local.state.acwProfile.walletAlias,
+      store: deps.store,
+      outboundMessage: {
+        messageId: msgId,
+        peerId: options.target.peerId,
+        nonce: msgId,
+        commandType: command.type,
+        envelopeVersion: AGENT_COMM_ENVELOPE_VERSION,
+        msgId,
+        contactId: options.target.contact.contactId,
+        identityWallet: options.target.contact.identityWallet,
+        transportAddress: options.target.endpoint.receiveAddress,
+        decryptedCommandType: command.type,
+      },
+    },
+    local.state.acwWallet,
+    options.target.endpoint.receiveAddress,
+    calldata,
+  );
+
+  return {
+    ...local.identity,
+    ...result,
+    peerId: options.target.peerId,
+    recipient: options.target.endpoint.receiveAddress,
+    senderPeerId,
+    commandType: command.type,
+    envelopeVersion: AGENT_COMM_ENVELOPE_VERSION,
+    msgId,
+    contactId: options.target.contact.contactId,
+    legacyFallbackUsed: false,
   };
 }
 
@@ -983,7 +1373,33 @@ export async function sendCommCommand(
   options: SendCommCommandOptions,
 ): Promise<SendCommCommandResult> {
   const peer = getTrustedPeer(deps.store, options.peerId);
-  return sendCommCommandToRecipient(deps, {
+  const contactTarget = resolveContactTargetForTrustedPeer(deps.store, peer);
+
+  if (!contactTarget) {
+    return sendCommCommandV1ToRecipient(deps, {
+      masterPassword: options.masterPassword,
+      senderPeerId: options.senderPeerId,
+      recipient: {
+        peerId: peer.peerId,
+        walletAddress: peer.walletAddress,
+        pubkey: peer.pubkey,
+      },
+      command: options.command,
+      legacyFallbackUsed: true,
+    });
+  }
+
+  const selection = negotiateProtocolVersion(contactTarget.contact.supportedProtocols);
+  if (selection.envelopeVersion === AGENT_COMM_ENVELOPE_VERSION) {
+    return sendCommCommandV2ToContact(deps, {
+      masterPassword: options.masterPassword,
+      senderPeerId: options.senderPeerId,
+      target: contactTarget,
+      command: options.command,
+    });
+  }
+
+  return sendCommCommandV1ToRecipient(deps, {
     masterPassword: options.masterPassword,
     senderPeerId: options.senderPeerId,
     recipient: {
@@ -991,7 +1407,9 @@ export async function sendCommCommand(
       walletAddress: peer.walletAddress,
       pubkey: peer.pubkey,
     },
+    contact: contactTarget.contact,
     command: options.command,
+    legacyFallbackUsed: selection.legacyFallback,
   });
 }
 
@@ -1049,6 +1467,41 @@ export async function sendCommStartDiscovery(
   });
 }
 
+async function sendNegotiatedContactCommand(
+  deps: AgentCommEntrypointDependencies,
+  options: {
+    masterPassword?: string;
+    senderPeerId?: string;
+    target: ResolvedOutboundContactTarget;
+    command: AgentCommand;
+    inlineCard?: AgentCommSignedIdentityArtifactBundle;
+  },
+): Promise<SendCommCommandResult> {
+  const selection = negotiateProtocolVersion(options.target.contact.supportedProtocols);
+  if (selection.envelopeVersion === AGENT_COMM_ENVELOPE_VERSION) {
+    return sendCommCommandV2ToContact(deps, {
+      masterPassword: options.masterPassword,
+      senderPeerId: options.senderPeerId,
+      target: options.target,
+      command: options.command,
+      inlineCard: options.inlineCard,
+    });
+  }
+
+  return sendCommCommandV1ToRecipient(deps, {
+    masterPassword: options.masterPassword,
+    senderPeerId: options.senderPeerId,
+    recipient: {
+      peerId: options.target.peerId,
+      walletAddress: options.target.endpoint.receiveAddress,
+      pubkey: options.target.endpoint.pubkey,
+    },
+    contact: options.target.contact,
+    command: options.command,
+    legacyFallbackUsed: selection.legacyFallback,
+  });
+}
+
 export async function sendCommConnectionInvite(
   deps: AgentCommEntrypointDependencies,
   options: SendCommConnectionInviteOptions,
@@ -1069,14 +1522,11 @@ export async function sendCommConnectionInvite(
     attachInlineCard: options.attachInlineCard,
   });
 
-  const sent = await sendCommCommandToRecipient(deps, {
+  const sent = await sendNegotiatedContactCommand(deps, {
     masterPassword: options.masterPassword,
     senderPeerId: options.senderPeerId,
-    recipient: {
-      peerId: target.peerId,
-      walletAddress: target.endpoint.receiveAddress,
-      pubkey: target.endpoint.pubkey,
-    },
+    target,
+    inlineCard: inlineCardAttachment?.bundle,
     command: {
       type: "connection_invite",
       payload: {
@@ -1145,14 +1595,11 @@ export async function sendCommConnectionAccept(
     attachInlineCard: options.attachInlineCard,
   });
 
-  const sent = await sendCommCommandToRecipient(deps, {
+  const sent = await sendNegotiatedContactCommand(deps, {
     masterPassword: options.masterPassword,
     senderPeerId: options.senderPeerId,
-    recipient: {
-      peerId: target.peerId,
-      walletAddress: target.endpoint.receiveAddress,
-      pubkey: target.endpoint.pubkey,
-    },
+    target,
+    inlineCard: inlineCardAttachment?.bundle,
     command: {
       type: "connection_accept",
       payload: {
@@ -1210,14 +1657,10 @@ export async function sendCommConnectionReject(
   const reason = normalizeOptionalText(options.reason);
   const note = normalizeOptionalText(options.note);
 
-  const sent = await sendCommCommandToRecipient(deps, {
+  const sent = await sendNegotiatedContactCommand(deps, {
     masterPassword: options.masterPassword,
     senderPeerId: options.senderPeerId,
-    recipient: {
-      peerId: target.peerId,
-      walletAddress: target.endpoint.receiveAddress,
-      pubkey: target.endpoint.pubkey,
-    },
+    target,
     command: {
       type: "connection_reject",
       payload: {
@@ -1269,14 +1712,11 @@ export async function sendCommConnectionConfirm(
     attachInlineCard: options.attachInlineCard,
   });
 
-  const sent = await sendCommCommandToRecipient(deps, {
+  const sent = await sendNegotiatedContactCommand(deps, {
     masterPassword: options.masterPassword,
     senderPeerId: options.senderPeerId,
-    recipient: {
-      peerId: target.peerId,
-      walletAddress: target.endpoint.receiveAddress,
-      pubkey: target.endpoint.pubkey,
-    },
+    target,
+    inlineCard: inlineCardAttachment?.bundle,
     command: {
       type: "connection_confirm",
       payload: {

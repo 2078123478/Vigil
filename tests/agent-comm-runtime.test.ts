@@ -5,8 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AlphaOsConfig } from "../src/skills/alphaos/runtime/config";
 import { loadConfig } from "../src/skills/alphaos/runtime/config";
 import { InboxProcessingError } from "../src/skills/alphaos/runtime/agent-comm/inbox-processor";
+import {
+  initCommWallet,
+  rotateCommWallet,
+} from "../src/skills/alphaos/runtime/agent-comm/entrypoints";
 import { startAgentCommRuntime } from "../src/skills/alphaos/runtime/agent-comm/runtime";
 import { StateStore } from "../src/skills/alphaos/runtime/state-store";
+import { VaultService } from "../src/skills/alphaos/runtime/vault";
 
 const createPublicClientMock = vi.hoisted(() => vi.fn());
 const startListenerMock = vi.hoisted(() => vi.fn());
@@ -82,7 +87,7 @@ function createLoggerMock() {
 
 afterEach(() => {
   process.env = { ...originalEnv };
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   for (const entry of stores.splice(0)) {
     entry.store.close();
     fs.rmSync(entry.dir, { recursive: true, force: true });
@@ -367,6 +372,115 @@ describe("agent-comm runtime bootstrap", () => {
 
     runtime.stop();
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("backfills legacy peers into contacts during runtime startup", async () => {
+    const { store } = createStore("alphaos-comm-runtime-");
+    process.env.VAULT_MASTER_PASSWORD = "pass123";
+
+    store.upsertAgentPeer({
+      peerId: "legacy-peer",
+      walletAddress: "0x7777777777777777777777777777777777777777",
+      pubkey: "03cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      status: "trusted",
+      capabilities: ["ping"],
+    });
+
+    createPublicClientMock.mockReturnValue({
+      getChainId: vi.fn(async () => 196),
+    });
+
+    const runtime = await startAgentCommRuntime({
+      config: createConfig({
+        commEnabled: true,
+        commListenerMode: "disabled",
+        commRpcUrl: "http://localhost:8545",
+        commChainId: 196,
+        commWalletAlias: "agent-comm",
+      }),
+      logger: createLoggerMock() as never,
+      store,
+      discovery: {} as never,
+      onchain: {} as never,
+      vault: {
+        getSecret: vi.fn(() => "0x1111111111111111111111111111111111111111111111111111111111111111"),
+      } as never,
+    });
+
+    expect(store.getAgentContactByLegacyPeerId("legacy-peer")?.supportedProtocols).toContain(
+      "agent-comm/1",
+    );
+
+    runtime.stop();
+  });
+
+  it("starts listeners for active and grace receive addresses after ACW rotation", async () => {
+    const { store } = createStore("alphaos-comm-runtime-");
+    process.env.VAULT_MASTER_PASSWORD = "pass123";
+
+    const config = createConfig({
+      commEnabled: true,
+      commListenerMode: "poll",
+      commRpcUrl: "http://localhost:8545",
+      commChainId: 196,
+      commWalletAlias: "agent-comm",
+    });
+    const vault = new VaultService(store);
+    initCommWallet(
+      {
+        config,
+        store,
+        vault,
+      },
+      {
+        masterPassword: "pass123",
+        privateKey: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      },
+    );
+    const rotated = await rotateCommWallet(
+      {
+        config,
+        store,
+        vault,
+      },
+      {
+        masterPassword: "pass123",
+        privateKey: "0x2222222222222222222222222222222222222222222222222222222222222222",
+        nowUnixSeconds: Math.floor(Date.now() / 1000),
+      },
+    );
+
+    createPublicClientMock.mockReturnValue({
+      getChainId: vi.fn(async () => 196),
+    });
+
+    const stopActive = vi.fn();
+    const stopGrace = vi.fn();
+    startListenerMock
+      .mockImplementationOnce(() => stopActive)
+      .mockImplementationOnce(() => stopGrace);
+
+    const runtime = await startAgentCommRuntime({
+      config,
+      logger: createLoggerMock() as never,
+      store,
+      discovery: {} as never,
+      onchain: {} as never,
+      vault,
+    });
+
+    expect(startListenerMock).toHaveBeenCalledTimes(2);
+    const addresses = startListenerMock.mock.calls.map((call) => call[0].address);
+    expect(addresses).toContain(rotated.transportAddress);
+    expect(addresses).toContain(rotated.previousTransportAddress);
+    expect(runtime.getSnapshot().receiveAddresses).toEqual(
+      expect.arrayContaining([rotated.transportAddress, rotated.previousTransportAddress]),
+    );
+    expect(runtime.getSnapshot().graceReceiveAddresses).toEqual([rotated.previousTransportAddress]);
+
+    runtime.stop();
+    expect(stopActive).toHaveBeenCalledOnce();
+    expect(stopGrace).toHaveBeenCalledOnce();
   });
 
   it("does not re-execute messages already in executed status", async () => {

@@ -1,5 +1,6 @@
 import { formatArtifactFingerprint } from "./artifact-contracts";
 import type { StateStore } from "../state-store";
+import { isLegacyOnlyProtocolSet } from "./protocol-negotiation";
 import type {
   AgentConnectionEvent,
   AgentConnectionEventStatus,
@@ -31,6 +32,9 @@ export interface AgentContactSurfaceItem extends AgentContact {
   currentTransportKeyId?: string;
   pendingInvites: AgentPendingInviteCounts;
   latestPendingInvite?: AgentPendingInviteSummary;
+  legacyMarkers: string[];
+  legacyProtocolOnly: boolean;
+  legacyManualPeerRecord: boolean;
 }
 
 export interface AgentInviteSurfaceItem extends AgentConnectionEvent {
@@ -47,6 +51,9 @@ export interface AgentInviteSurfaceItem extends AgentConnectionEvent {
   requestedCapabilities?: string[];
   note?: string;
   senderPeerId?: string;
+  legacyMarkers?: string[];
+  legacyProtocolOnly?: boolean;
+  legacyManualPeerRecord?: boolean;
 }
 
 function readMetadataString(
@@ -160,6 +167,29 @@ function getLatestPendingInvite(
     : toPendingInviteSummary(latestOutbound);
 }
 
+function buildLegacyMarkers(contact: AgentContact): {
+  legacyMarkers: string[];
+  legacyProtocolOnly: boolean;
+  legacyManualPeerRecord: boolean;
+} {
+  const legacyProtocolOnly = isLegacyOnlyProtocolSet(contact.supportedProtocols);
+  const legacyManualPeerRecord = Boolean(
+    contact.metadata
+    && typeof contact.metadata === "object"
+    && !Array.isArray(contact.metadata)
+    && "legacyBackfill" in contact.metadata,
+  );
+  const legacyMarkers = [
+    ...(legacyProtocolOnly ? ["v1_only"] : []),
+    ...(legacyManualPeerRecord ? ["manual_peer_record"] : []),
+  ];
+  return {
+    legacyMarkers,
+    legacyProtocolOnly,
+    legacyManualPeerRecord,
+  };
+}
+
 function buildContactSurfaceDetails(
   store: StateStore,
   contact: AgentContact,
@@ -194,6 +224,7 @@ function buildContactSurfaceDetails(
           latestPendingInvite: getLatestPendingInvite(inboundPendingInvites, outboundPendingInvites),
         }
       : {}),
+    ...buildLegacyMarkers(contact),
   };
 }
 
@@ -209,6 +240,9 @@ function buildInviteSurfaceDetails(
       requestedCapabilities: readMetadataStringArray(event.metadata, "requestedCapabilities"),
       note: readMetadataString(event.metadata, "note"),
       senderPeerId: readMetadataString(event.metadata, "senderPeerId"),
+      legacyMarkers: [],
+      legacyProtocolOnly: false,
+      legacyManualPeerRecord: false,
     };
   }
 
@@ -227,6 +261,9 @@ function buildInviteSurfaceDetails(
     requestedCapabilities: readMetadataStringArray(event.metadata, "requestedCapabilities"),
     note: readMetadataString(event.metadata, "note"),
     senderPeerId: readMetadataString(event.metadata, "senderPeerId"),
+    legacyMarkers: contactDetails.legacyMarkers,
+    legacyProtocolOnly: contactDetails.legacyProtocolOnly,
+    legacyManualPeerRecord: contactDetails.legacyManualPeerRecord,
   };
 }
 

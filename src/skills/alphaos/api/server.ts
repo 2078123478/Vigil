@@ -15,6 +15,8 @@ import type { BacktestSnapshotRow, RiskPolicy, SkillManifest } from "../types";
 import {
   exportIdentityArtifactBundle,
   importIdentityArtifactBundle,
+  registerTrustedPeerEntry,
+  rotateCommWallet,
   sendCommConnectionAccept,
   sendCommConnectionInvite,
   sendCommConnectionReject,
@@ -170,6 +172,8 @@ function parseAgentMessageListQuery(
       limit: number;
       filters: {
         peerId?: string;
+        contactId?: string;
+        identityWallet?: string;
         direction?: AgentMessageDirection;
         status?: AgentMessageStatus;
       };
@@ -190,6 +194,8 @@ function parseAgentMessageListQuery(
     limit: toLimit(query.limit, 50),
     filters: {
       peerId: readOptionalTrimmedString(query.peerId),
+      contactId: readOptionalTrimmedString(query.contactId),
+      identityWallet: readOptionalTrimmedString(query.identityWallet),
       direction: direction.value,
       status: status.value,
     },
@@ -832,6 +838,90 @@ function parseConnectionRejectBody(
   };
 }
 
+function parseRotateWalletBody(
+  body: unknown,
+):
+  | {
+      ok: true;
+      input: {
+        gracePeriodHours?: number;
+        privateKey?: string;
+        senderPeerId?: string;
+        displayName?: string;
+        handle?: string;
+        capabilityProfile?: string;
+        capabilities?: string[];
+        expiresInDays?: number;
+        keyId?: string;
+        legacyPeerId?: string;
+        nowUnixSeconds?: number;
+      };
+    }
+  | { ok: false; error: string } {
+  const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const senderPeerId = parseOptionalStringField(payload, "senderPeerId");
+  if (!senderPeerId.ok) {
+    return senderPeerId;
+  }
+  const displayName = parseOptionalStringField(payload, "displayName");
+  if (!displayName.ok) {
+    return displayName;
+  }
+  const handle = parseOptionalStringField(payload, "handle");
+  if (!handle.ok) {
+    return handle;
+  }
+  const capabilityProfile = parseOptionalStringField(payload, "capabilityProfile");
+  if (!capabilityProfile.ok) {
+    return capabilityProfile;
+  }
+  const capabilities = parseOptionalStringArrayField(payload, "capabilities");
+  if (!capabilities.ok) {
+    return capabilities;
+  }
+  const keyId = parseOptionalStringField(payload, "keyId");
+  if (!keyId.ok) {
+    return keyId;
+  }
+  const legacyPeerId = parseOptionalStringField(payload, "legacyPeerId");
+  if (!legacyPeerId.ok) {
+    return legacyPeerId;
+  }
+  const privateKey = parseOptionalStringField(payload, "privateKey");
+  if (!privateKey.ok) {
+    return privateKey;
+  }
+  const gracePeriodHours = parseOptionalPositiveInteger(payload.gracePeriodHours);
+  if (!gracePeriodHours.ok) {
+    return { ok: false, error: "gracePeriodHours must be a positive integer" };
+  }
+  const expiresInDays = parseOptionalPositiveInteger(payload.expiresInDays);
+  if (!expiresInDays.ok) {
+    return { ok: false, error: "expiresInDays must be a positive integer" };
+  }
+  const nowUnixSeconds = parseOptionalNonNegativeInteger(payload.nowUnixSeconds);
+  if (!nowUnixSeconds.ok) {
+    return { ok: false, error: "nowUnixSeconds must be a non-negative integer" };
+  }
+
+  return {
+    ok: true,
+    input: {
+      ...(gracePeriodHours.value !== undefined ? { gracePeriodHours: gracePeriodHours.value } : {}),
+      ...(privateKey.value ? { privateKey: privateKey.value } : {}),
+      ...(senderPeerId.value ? { senderPeerId: senderPeerId.value } : {}),
+      ...(displayName.value ? { displayName: displayName.value } : {}),
+      ...(handle.value ? { handle: handle.value } : {}),
+      ...(capabilityProfile.value ? { capabilityProfile: capabilityProfile.value } : {}),
+      ...(capabilities.value ? { capabilities: capabilities.value } : {}),
+      ...(expiresInDays.value !== undefined ? { expiresInDays: expiresInDays.value } : {}),
+      ...(keyId.value ? { keyId: keyId.value } : {}),
+      ...(legacyPeerId.value ? { legacyPeerId: legacyPeerId.value } : {}),
+      ...(nowUnixSeconds.value !== undefined ? { nowUnixSeconds: nowUnixSeconds.value } : {}),
+    },
+  };
+}
+
 function secureEquals(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
@@ -1118,6 +1208,12 @@ export function createServer(
   app.use(express.json({ limit: "512kb" }));
   const apiSecret = options?.apiSecret ?? process.env.API_SECRET ?? "";
   const demoPublic = options?.demoPublic ?? parseBoolean(process.env.DEMO_PUBLIC, false);
+
+  if (options?.config) {
+    store.backfillAgentContactsFromLegacyPeers({
+      chainId: options.config.commChainId,
+    });
+  }
 
   const requireApiAuth: express.RequestHandler = (req, res, next) => {
     if (isAuthorized(req.header("authorization"), apiSecret)) {
@@ -1627,8 +1723,19 @@ export function createServer(
       return;
     }
 
-    const peer = store.upsertAgentPeer(parsed.input);
-    res.json(peer);
+    const peer = registerTrustedPeerEntry(
+      {
+        store,
+      },
+      parsed.input,
+    );
+    const contact = store.getAgentContactByLegacyPeerId(peer.peerId);
+    res.json({
+      ...peer,
+      contactId: contact?.contactId,
+      legacyManualRecord: true,
+      legacyMarkers: ["manual_peer_record"],
+    });
   });
 
   app.get("/api/v1/agent-comm/contacts", (req, res) => {
@@ -1753,6 +1860,25 @@ export function createServer(
 
     try {
       res.json(await sendCommConnectionReject(deps, parsed.input));
+    } catch (error) {
+      handleAgentCommApiError(res, error);
+    }
+  });
+
+  app.post("/api/v1/agent-comm/wallets/rotate", async (req, res) => {
+    const deps = ensureAgentCommSendDeps(res);
+    if (!deps) {
+      return;
+    }
+
+    const parsed = parseRotateWalletBody(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+
+    try {
+      res.json(await rotateCommWallet(deps, parsed.input));
     } catch (error) {
       handleAgentCommApiError(res, error);
     }

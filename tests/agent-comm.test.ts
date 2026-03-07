@@ -5,7 +5,9 @@ import { startListener } from "../src/skills/alphaos/runtime/agent-comm/tx-liste
 import {
   AGENT_COMM_DEFAULT_MAX_MESSAGE_BYTES,
   AGENT_COMM_ENVELOPE_VERSION,
-  type EncryptedEnvelope,
+  AGENT_COMM_KEX_SUITE_V2,
+  AGENT_COMM_LEGACY_ENVELOPE_VERSION,
+  type EncryptedEnvelopeV1,
 } from "../src/skills/alphaos/runtime/agent-comm/types";
 import type { StateStore } from "../src/skills/alphaos/runtime/state-store";
 
@@ -19,8 +21,8 @@ vi.mock("viem", async () => {
   };
 });
 
-const baseEnvelope: EncryptedEnvelope = {
-  version: AGENT_COMM_ENVELOPE_VERSION,
+const baseEnvelope: EncryptedEnvelopeV1 = {
+  version: AGENT_COMM_LEGACY_ENVELOPE_VERSION,
   senderPeerId: "peer-a",
   senderPubkey: "03aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   recipient: "0x1111111111111111111111111111111111111111",
@@ -50,8 +52,25 @@ describe("agent-comm crypto and codec", () => {
     expect(decoded).toEqual(baseEnvelope);
   });
 
+  it("encodes and decodes v2 envelope payloads", () => {
+    const v2Envelope = {
+      version: AGENT_COMM_ENVELOPE_VERSION,
+      kex: {
+        suite: AGENT_COMM_KEX_SUITE_V2,
+        recipientKeyId: "rk_receiver",
+        ephemeralPubkey: "03bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      },
+      ciphertext: "0x1234abcd",
+    } as const;
+
+    const encoded = encodeEnvelope(v2Envelope);
+    const decoded = decodeEnvelope(encoded);
+
+    expect(decoded).toEqual(v2Envelope);
+  });
+
   it("enforces max envelope message bytes", () => {
-    const oversized: EncryptedEnvelope = {
+    const oversized: EncryptedEnvelopeV1 = {
       ...baseEnvelope,
       ciphertext: `0x${"ab".repeat(AGENT_COMM_DEFAULT_MAX_MESSAGE_BYTES)}`,
     };

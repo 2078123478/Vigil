@@ -13,6 +13,7 @@ vi.mock("../src/skills/alphaos/runtime/agent-comm/entrypoints", async () => {
     ...actual,
     exportIdentityArtifactBundle: vi.fn(),
     importIdentityArtifactBundle: vi.fn(),
+    rotateCommWallet: vi.fn(),
     sendCommConnectionAccept: vi.fn(),
     sendCommConnectionInvite: vi.fn(),
     sendCommConnectionReject: vi.fn(),
@@ -25,6 +26,7 @@ import { createServer } from "../src/skills/alphaos/api/server";
 import {
   exportIdentityArtifactBundle,
   importIdentityArtifactBundle,
+  rotateCommWallet,
   sendCommConnectionAccept,
   sendCommConnectionInvite,
   sendCommConnectionReject,
@@ -607,6 +609,62 @@ describe("agent-comm HTTP API", () => {
     );
   });
 
+  it("rotates the active comm wallet through the HTTP route", async () => {
+    const { app, store, vault, config } = buildApp();
+
+    vi.mocked(rotateCommWallet).mockResolvedValue({
+      address: "0x1111111111111111111111111111111111111111",
+      pubkey: "03aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      chainId: 196,
+      walletAlias: "agent-comm",
+      defaultSenderPeerId: "agent-comm",
+      identityWallet: "0x1111111111111111111111111111111111111111",
+      transportAddress: "0x2222222222222222222222222222222222222222",
+      localIdentityMode: "standard",
+      supportedProtocols: ["agent-comm/2", "agent-comm/1"],
+      previousTransportAddress: "0x9999999999999999999999999999999999999999",
+      archivedWalletAlias: "agent-comm-acw-prev-123",
+      graceExpiresAt: "2026-03-09T00:00:00.000Z",
+      contactCardDigest: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      contactCardFingerprint: "0xaaaaaaaa...aaaaaaaa",
+      transportBindingDigest: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      transportBindingFingerprint: "0xbbbbbbbb...bbbbbbbb",
+    });
+
+    const response = await invokeApi(
+      app,
+      "POST",
+      "/api/v1/agent-comm/wallets/rotate",
+      {
+        gracePeriodHours: 48,
+        displayName: "Rotated Operator",
+        capabilityProfile: "research-collab",
+        capabilities: ["ping", "start_discovery"],
+      },
+      {
+        authorization: `Bearer ${TEST_API_SECRET}`,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect((response.body as { archivedWalletAlias: string }).archivedWalletAlias).toBe(
+      "agent-comm-acw-prev-123",
+    );
+    expect(vi.mocked(rotateCommWallet)).toHaveBeenCalledWith(
+      {
+        config,
+        store,
+        vault,
+      },
+      {
+        gracePeriodHours: 48,
+        displayName: "Rotated Operator",
+        capabilityProfile: "research-collab",
+        capabilities: ["ping", "start_discovery"],
+      },
+    );
+  });
+
   it("forwards ping and start-discovery sends to the existing entrypoints", async () => {
     const { app, store, vault, config } = buildApp();
 
@@ -616,6 +674,10 @@ describe("agent-comm HTTP API", () => {
       chainId: 196,
       walletAlias: "agent-comm",
       defaultSenderPeerId: "agent-comm",
+      identityWallet: "0x1111111111111111111111111111111111111111",
+      transportAddress: "0x1111111111111111111111111111111111111111",
+      localIdentityMode: "temporary_dual_use",
+      supportedProtocols: ["agent-comm/2", "agent-comm/1"],
       txHash: "0xping",
       nonce: "ping-nonce",
       sentAt: "2026-03-06T00:00:00.000Z",
@@ -623,6 +685,8 @@ describe("agent-comm HTTP API", () => {
       recipient: "0x9999999999999999999999999999999999999999",
       senderPeerId: "agent-a",
       commandType: "ping",
+      envelopeVersion: 1,
+      legacyFallbackUsed: true,
     });
     vi.mocked(sendCommStartDiscovery).mockResolvedValue({
       address: "0x1111111111111111111111111111111111111111",
@@ -630,6 +694,10 @@ describe("agent-comm HTTP API", () => {
       chainId: 196,
       walletAlias: "agent-comm",
       defaultSenderPeerId: "agent-comm",
+      identityWallet: "0x1111111111111111111111111111111111111111",
+      transportAddress: "0x1111111111111111111111111111111111111111",
+      localIdentityMode: "temporary_dual_use",
+      supportedProtocols: ["agent-comm/2", "agent-comm/1"],
       txHash: "0xdiscovery",
       nonce: "discovery-nonce",
       sentAt: "2026-03-06T00:00:01.000Z",
@@ -637,6 +705,8 @@ describe("agent-comm HTTP API", () => {
       recipient: "0x9999999999999999999999999999999999999999",
       senderPeerId: "agent-a",
       commandType: "start_discovery",
+      envelopeVersion: 1,
+      legacyFallbackUsed: true,
     });
 
     const pingResponse = await invokeApi(

@@ -10,7 +10,7 @@ import {
   InboxProcessingError,
   type ProcessInboxResult,
 } from "./inbox-processor";
-import { restoreShadowWallet } from "./shadow-wallet";
+import { resolveLocalIdentityState } from "./local-identity";
 import { routeCommand } from "./task-router";
 import { startListener, type TransactionEvent } from "./tx-listener";
 import type { CommListenerMode, ListenerCursor } from "./types";
@@ -29,6 +29,10 @@ export interface AgentCommRuntimeSnapshot {
   walletAlias: string;
   localAddress?: string;
   localPubkey?: string;
+  identityWallet?: string;
+  localIdentityMode?: string;
+  receiveAddresses?: string[];
+  graceReceiveAddresses?: string[];
   lastCursor?: ListenerCursor;
   lastRuntimeError?: AgentCommRuntimeErrorSnapshot;
 }
@@ -50,13 +54,11 @@ export interface StartAgentCommRuntimeOptions {
 interface AgentCommRuntimeState {
   localAddress?: string;
   localPubkey?: string;
+  identityWallet?: string;
+  localIdentityMode?: string;
+  receiveAddresses: string[];
+  graceReceiveAddresses: string[];
   lastRuntimeError?: AgentCommRuntimeErrorSnapshot;
-}
-
-interface RestoredRuntimeWallet {
-  wallet: ReturnType<typeof restoreShadowWallet>;
-  address: string;
-  pubkey: string;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -87,6 +89,10 @@ function createSnapshotGetter(
     walletAlias: config.commWalletAlias,
     localAddress: state.localAddress,
     localPubkey: state.localPubkey,
+    identityWallet: state.identityWallet,
+    localIdentityMode: state.localIdentityMode,
+    receiveAddresses: state.receiveAddresses,
+    graceReceiveAddresses: state.graceReceiveAddresses,
     lastCursor: state.localAddress
       ? (store.getListenerCursor(state.localAddress, config.commChainId) ?? undefined)
       : undefined,
@@ -105,7 +111,10 @@ async function assertRpcChainId(rpcUrl: string, chainId: number): Promise<void> 
 }
 
 function createRuntimeState(): AgentCommRuntimeState {
-  return {};
+  return {
+    receiveAddresses: [],
+    graceReceiveAddresses: [],
+  };
 }
 
 function createDisabledRuntimeHandle(
@@ -132,24 +141,34 @@ function getRequiredRpcUrl(config: AlphaOsConfig): string {
   return config.commRpcUrl;
 }
 
-function restoreRuntimeWallet(
+function restoreRuntimeIdentityState(
   options: StartAgentCommRuntimeOptions,
   masterPassword: string,
   state: AgentCommRuntimeState,
-): RestoredRuntimeWallet {
-  const privateKey = options.vault.getSecret(options.config.commWalletAlias, masterPassword);
-  const wallet = restoreShadowWallet(privateKey);
-  const address = wallet.getAddress();
-  const pubkey = wallet.getPublicKey();
+) {
+  options.store.backfillAgentContactsFromLegacyPeers({
+    chainId: options.config.commChainId,
+  });
 
-  state.localAddress = address;
-  state.localPubkey = pubkey;
+  const localState = resolveLocalIdentityState(
+    {
+      config: options.config,
+      store: options.store,
+      vault: options.vault,
+    },
+    masterPassword,
+  );
 
-  return {
-    wallet,
-    address,
-    pubkey,
-  };
+  state.localAddress = localState.acwWallet.getAddress();
+  state.localPubkey = localState.acwWallet.getPublicKey();
+  state.identityWallet = localState.liwProfile.identityWallet;
+  state.localIdentityMode = localState.acwProfile.mode;
+  state.receiveAddresses = localState.receiveKeys.map((entry) => entry.walletAddress);
+  state.graceReceiveAddresses = localState.receiveKeys
+    .filter((entry) => entry.status === "grace")
+    .map((entry) => entry.walletAddress);
+
+  return localState;
 }
 
 function createRuntimeErrorRecorder(
@@ -212,14 +231,15 @@ async function executeInboundMessage(
 
 function createTransactionHandler(
   options: Pick<StartAgentCommRuntimeOptions, "config" | "discovery" | "onchain" | "store">,
-  wallet: ReturnType<typeof restoreShadowWallet>,
+  input: ReturnType<typeof resolveLocalIdentityState>,
   setRuntimeError: (code: string, message: string, details?: Record<string, unknown>) => void,
 ): (event: TransactionEvent) => Promise<void> {
   return async (event: TransactionEvent): Promise<void> => {
     try {
       const result = await processInbox(
         {
-          wallet,
+          wallet: input.acwWallet,
+          receiveKeys: input.receiveKeys,
           store: options.store,
           expectedChainId: options.config.commChainId,
         },
@@ -239,11 +259,11 @@ function createTransactionHandler(
   };
 }
 
-function startRuntimeListener(
+function startRuntimeListeners(
   config: AlphaOsConfig,
   logger: Logger,
   store: StateStore,
-  localAddress: string,
+  receiveAddresses: string[],
   rpcUrl: string,
   handleTransaction: (event: TransactionEvent) => Promise<void>,
   setRuntimeError: (code: string, message: string, details?: Record<string, unknown>) => void,
@@ -259,34 +279,41 @@ function startRuntimeListener(
     return () => {};
   }
 
-  const stopListener = startListener(
-    {
-      rpcUrl,
-      chainId: config.commChainId,
-      address: localAddress,
-      pollIntervalMs: config.commPollIntervalMs,
-      store,
-      mode: "poll",
-      onError: (error) => {
-        setRuntimeError("LISTENER_FAILED", error.message, {
-          chainId: config.commChainId,
-          address: localAddress,
-        });
+  const stops = [...new Set(receiveAddresses.map((address) => address.toLowerCase()))].map((normalized) => {
+    const address = receiveAddresses.find((candidate) => candidate.toLowerCase() === normalized) ?? normalized;
+    return startListener(
+      {
+        rpcUrl,
+        chainId: config.commChainId,
+        address,
+        pollIntervalMs: config.commPollIntervalMs,
+        store,
+        mode: "poll",
+        onError: (error) => {
+          setRuntimeError("LISTENER_FAILED", error.message, {
+            chainId: config.commChainId,
+            address,
+          });
+        },
       },
-    },
-    handleTransaction,
-  );
+      handleTransaction,
+    );
+  });
 
   logger.info(
     {
       chainId: config.commChainId,
-      address: localAddress,
+      addresses: receiveAddresses,
       listenerMode: config.commListenerMode,
     },
     "agent-comm runtime started",
   );
 
-  return stopListener;
+  return () => {
+    for (const stop of stops) {
+      stop();
+    }
+  };
 }
 
 function createRuntimeHandle(
@@ -322,7 +349,7 @@ export async function startAgentCommRuntime(
 
   const rpcUrl = getRequiredRpcUrl(config);
   const masterPassword = getRequiredMasterPassword();
-  const restoredWallet = restoreRuntimeWallet(options, masterPassword, runtimeState);
+  const localState = restoreRuntimeIdentityState(options, masterPassword, runtimeState);
 
   await assertRpcChainId(rpcUrl, config.commChainId);
 
@@ -334,14 +361,14 @@ export async function startAgentCommRuntime(
       onchain: options.onchain,
       store,
     },
-    restoredWallet.wallet,
+    localState,
     setRuntimeError,
   );
-  const stopListener = startRuntimeListener(
+  const stopListener = startRuntimeListeners(
     config,
     logger,
     store,
-    restoredWallet.address,
+    localState.receiveKeys.map((entry) => entry.walletAddress),
     rpcUrl,
     handleTransaction,
     setRuntimeError,

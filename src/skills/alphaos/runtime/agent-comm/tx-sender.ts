@@ -16,6 +16,15 @@ import type { AgentCommandType, AgentMessage } from "./types";
 export interface OutboundMessageContext {
   peerId: string;
   messageId?: string;
+  nonce: string;
+  commandType: AgentCommandType;
+  envelopeVersion?: number;
+  msgId?: string;
+  contactId?: string;
+  identityWallet?: string;
+  transportAddress?: string;
+  trustOutcome?: string;
+  decryptedCommandType?: AgentCommandType;
 }
 
 export interface TxSenderOptions {
@@ -35,6 +44,13 @@ export interface SendResult {
 interface PersistOutboundMessagePayload {
   nonce: string;
   commandType: AgentCommandType;
+  envelopeVersion?: number;
+  msgId?: string;
+  contactId?: string;
+  identityWallet?: string;
+  transportAddress?: string;
+  trustOutcome?: string;
+  decryptedCommandType?: AgentCommandType;
   ciphertext: string;
   txHash?: string;
   sentAt?: string;
@@ -111,6 +127,13 @@ function persistOutboundMessage(
   if (existingMessage) {
     store.updateAgentMessageStatus(existingMessage.id, status, {
       txHash: payload.txHash,
+      envelopeVersion: payload.envelopeVersion,
+      msgId: payload.msgId,
+      contactId: payload.contactId,
+      identityWallet: payload.identityWallet,
+      transportAddress: payload.transportAddress,
+      trustOutcome: payload.trustOutcome,
+      decryptedCommandType: payload.decryptedCommandType,
       sentAt: payload.sentAt,
       error: payload.error,
     });
@@ -124,6 +147,13 @@ function persistOutboundMessage(
     txHash: payload.txHash,
     nonce: payload.nonce,
     commandType: payload.commandType,
+    envelopeVersion: payload.envelopeVersion,
+    msgId: payload.msgId,
+    contactId: payload.contactId,
+    identityWallet: payload.identityWallet,
+    transportAddress: payload.transportAddress,
+    trustOutcome: payload.trustOutcome,
+    decryptedCommandType: payload.decryptedCommandType,
     ciphertext: payload.ciphertext,
     status,
     sentAt: payload.sentAt,
@@ -138,19 +168,22 @@ export async function sendCalldata(
   calldata: Hex,
 ): Promise<SendResult> {
   const envelope = decodeEnvelope(calldata);
-  const recipient = normalizeAddress(envelope.recipient, "envelope recipient");
   const targetAddress = normalizeAddress(toAddress, "toAddress");
 
-  if (recipient !== targetAddress) {
-    throw new Error(
-      `Envelope recipient mismatch: expected ${targetAddress}, received ${recipient}`,
-    );
-  }
+  if (envelope.version === 1) {
+    const recipient = normalizeAddress(envelope.recipient, "envelope recipient");
 
-  if (!sameHex(wallet.getPublicKey(), envelope.senderPubkey)) {
-    throw new Error(
-      `Envelope senderPubkey does not match wallet alias "${options.walletAlias}"`,
-    );
+    if (recipient !== targetAddress) {
+      throw new Error(
+        `Envelope recipient mismatch: expected ${targetAddress}, received ${recipient}`,
+      );
+    }
+
+    if (!sameHex(wallet.getPublicKey(), envelope.senderPubkey)) {
+      throw new Error(
+        `Envelope senderPubkey does not match wallet alias "${options.walletAlias}"`,
+      );
+    }
   }
 
   const chain = createCommChain(options);
@@ -188,8 +221,17 @@ export async function sendCalldata(
     });
 
     persistOutboundMessage(options, {
-      nonce: envelope.nonce,
-      commandType: envelope.command.type,
+      nonce: options.outboundMessage?.nonce ?? (envelope.version === 1 ? envelope.nonce : crypto.randomUUID()),
+      commandType:
+        options.outboundMessage?.commandType
+        ?? (envelope.version === 1 ? envelope.command.type : "ping"),
+      envelopeVersion: options.outboundMessage?.envelopeVersion ?? envelope.version,
+      msgId: options.outboundMessage?.msgId,
+      contactId: options.outboundMessage?.contactId,
+      identityWallet: options.outboundMessage?.identityWallet,
+      transportAddress: options.outboundMessage?.transportAddress,
+      trustOutcome: options.outboundMessage?.trustOutcome,
+      decryptedCommandType: options.outboundMessage?.decryptedCommandType,
       ciphertext: envelope.ciphertext,
       txHash,
       sentAt,
@@ -197,14 +239,23 @@ export async function sendCalldata(
 
     return {
       txHash,
-      nonce: envelope.nonce,
+      nonce: options.outboundMessage?.nonce ?? (envelope.version === 1 ? envelope.nonce : ""),
       sentAt,
     };
   } catch (error) {
     const reason = toErrorMessage(error);
     persistOutboundMessage(options, {
-      nonce: envelope.nonce,
-      commandType: envelope.command.type,
+      nonce: options.outboundMessage?.nonce ?? (envelope.version === 1 ? envelope.nonce : crypto.randomUUID()),
+      commandType:
+        options.outboundMessage?.commandType
+        ?? (envelope.version === 1 ? envelope.command.type : "ping"),
+      envelopeVersion: options.outboundMessage?.envelopeVersion ?? envelope.version,
+      msgId: options.outboundMessage?.msgId,
+      contactId: options.outboundMessage?.contactId,
+      identityWallet: options.outboundMessage?.identityWallet,
+      transportAddress: options.outboundMessage?.transportAddress,
+      trustOutcome: options.outboundMessage?.trustOutcome,
+      decryptedCommandType: options.outboundMessage?.decryptedCommandType,
       ciphertext: envelope.ciphertext,
       error: reason,
     });

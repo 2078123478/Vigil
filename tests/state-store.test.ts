@@ -578,6 +578,51 @@ describe("StateStore P0 safety", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("stores v2 agent message metadata on a fresh database bootstrap", () => {
+    const { dir, store } = createStore("alphaos-state-");
+
+    const message = store.insertAgentMessage({
+      direction: "outbound",
+      peerId: "peer-v2",
+      nonce: "nonce-v2",
+      commandType: "ping",
+      envelopeVersion: 2,
+      msgId: "11111111-1111-4111-8111-111111111111",
+      contactId: "ct_v2",
+      identityWallet: "0x7777777777777777777777777777777777777777",
+      transportAddress: "0x8888888888888888888888888888888888888888",
+      trustOutcome: "trusted_sender",
+      decryptedCommandType: "ping",
+      ciphertext: "0xdeadbeef",
+      status: "sent",
+      sentAt: "2026-03-07T00:00:00.000Z",
+    });
+
+    expect(message).toEqual(
+      expect.objectContaining({
+        envelopeVersion: 2,
+        msgId: "11111111-1111-4111-8111-111111111111",
+        contactId: "ct_v2",
+        identityWallet: "0x7777777777777777777777777777777777777777",
+        transportAddress: "0x8888888888888888888888888888888888888888",
+        trustOutcome: "trusted_sender",
+        decryptedCommandType: "ping",
+      }),
+    );
+    expect(
+      store.findAgentMessageByMsgId("outbound", "11111111-1111-4111-8111-111111111111")?.id,
+    ).toBe(message.id);
+    expect(store.listAgentMessages(10, { contactId: "ct_v2" })).toHaveLength(1);
+    expect(
+      store.listAgentMessages(10, {
+        identityWallet: "0x7777777777777777777777777777777777777777",
+      }),
+    ).toHaveLength(1);
+
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("drops obsolete agent comm tables and enforces message uniqueness when opening a legacy db", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alphaos-state-legacy-"));
     const legacyDb = new Database(path.join(dir, "alpha.db"));

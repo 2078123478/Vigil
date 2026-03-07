@@ -8,6 +8,7 @@ import { createServer } from "./skills/alphaos/api/server";
 import { StateStore } from "./skills/alphaos/runtime/state-store";
 import { VaultService } from "./skills/alphaos/runtime/vault";
 import {
+  bootstrapAgentCommState,
   exportIdentityArtifactBundle,
   getCommIdentity,
   importIdentityArtifactBundleFromJson,
@@ -15,6 +16,7 @@ import {
   initTemporaryDemoWallet,
   listLocalIdentityProfiles,
   registerTrustedPeerEntry,
+  rotateCommWallet,
   sendCommConnectionAccept,
   sendCommConnectionInvite,
   sendCommConnectionReject,
@@ -148,6 +150,7 @@ export function getAgentCommHelpText(): string {
     "Available now:",
     "  agent-comm:wallet:init",
     "  agent-comm:wallet:init-demo",
+    "  agent-comm:wallet:rotate",
     "  agent-comm:identity",
     "  agent-comm:card:export [--display-name <name>] [--output <file>]",
     "  agent-comm:card:import <file>",
@@ -159,6 +162,7 @@ export function getAgentCommHelpText(): string {
     "  agent-comm:send <ping|start_discovery> <peerId>",
     "",
     "Notes:",
+    "  Preferred flow: add contact via card import, then connect via invite/accept.",
     "  contactRef currently accepts contactId only.",
     "Canonical typed-data contracts:",
     "  docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md",
@@ -257,11 +261,58 @@ export async function run(): Promise<void> {
     return;
   }
 
+  if (command === "agent-comm:wallet:rotate") {
+    const parsed = parseCliArgs(argv.slice(1));
+    const store = new StateStore(config.dataDir);
+    const vault = new VaultService(store);
+    try {
+      const result = await rotateCommWallet(
+        {
+          config,
+          store,
+          vault,
+        },
+        {
+          privateKey: readFlag(parsed, "private-key"),
+          senderPeerId: readFlag(parsed, "sender-peer-id"),
+          displayName: readFlag(parsed, "display-name"),
+          handle: readFlag(parsed, "handle"),
+          capabilityProfile: readFlag(parsed, "capability-profile"),
+          capabilities: parseCsv(readFlag(parsed, "capabilities")),
+          keyId: readFlag(parsed, "key-id"),
+          legacyPeerId: readFlag(parsed, "legacy-peer-id"),
+          gracePeriodHours: parsePositiveIntegerFlag(
+            readFlag(parsed, "grace-period-hours"),
+            "grace-period-hours",
+          ),
+          expiresInDays: parsePositiveIntegerFlag(readFlag(parsed, "expires-in-days"), "expires-in-days"),
+        },
+      );
+      writeJson({
+        action: "agent-comm:wallet:rotate",
+        ...result,
+      });
+    } finally {
+      store.close();
+    }
+    return;
+  }
+
   if (command === "agent-comm:identity") {
     const parsed = parseCliArgs(argv.slice(1));
     const store = new StateStore(config.dataDir);
     const vault = new VaultService(store);
     try {
+      bootstrapAgentCommState(
+        {
+          config,
+          store,
+          vault,
+        },
+        {
+          senderPeerId: readFlag(parsed, "sender-peer-id"),
+        },
+      );
       const identity = getCommIdentity(
         {
           config,
@@ -364,7 +415,16 @@ export async function run(): Promise<void> {
 
   if (command === "agent-comm:contacts:list") {
     const store = new StateStore(config.dataDir);
+    const vault = new VaultService(store);
     try {
+      bootstrapAgentCommState(
+        {
+          config,
+          store,
+          vault,
+        },
+        {},
+      );
       writeJson({
         action: "agent-comm:contacts:list",
         contacts: listAgentContactSurfaceItems(store),
@@ -511,6 +571,9 @@ export async function run(): Promise<void> {
       writeJson({
         action: "agent-comm:peer:trust",
         peer,
+        legacyManualRecord: true,
+        legacyMarkers: ["manual_peer_record"],
+        contactId: store.getAgentContactByLegacyPeerId(peer.peerId)?.contactId,
       });
     } finally {
       store.close();

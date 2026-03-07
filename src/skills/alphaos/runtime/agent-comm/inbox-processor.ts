@@ -6,11 +6,14 @@ import {
   type AgentCommSignedIdentityArtifactBundle,
   type AgentCommSignedTransportBindingArtifact,
 } from "./artifact-workflow";
+import type { ResolvedReceiveKey } from "./local-identity";
 import { decodeEnvelope } from "./calldata-codec";
 import { decrypt, deriveSharedKey } from "./ecdh-crypto";
 import type { ShadowWallet } from "./shadow-wallet";
 import {
+  AGENT_COMM_KEX_SUITE_V2,
   agentCommandSchema,
+  encryptedEnvelopeV2BodySchema,
   isBusinessCommandType,
   isConnectionCommandType,
   type AgentCommand,
@@ -27,6 +30,7 @@ export interface InboxProcessorOptions {
   wallet: ShadowWallet;
   store: StateStore;
   expectedChainId?: number;
+  receiveKeys?: ResolvedReceiveKey[];
 }
 
 export interface ProcessInboxResult {
@@ -197,7 +201,7 @@ function materializeInlineCardContact(
   store: StateStore,
   input: {
     existingContact: AgentContact | null;
-    senderPeerId: string;
+    senderPeerId?: string;
     contactCard: AgentCommSignedContactCardArtifact;
     transportBinding: AgentCommSignedTransportBindingArtifact;
     transportBindingDigest: string;
@@ -262,7 +266,7 @@ async function evaluateInlineCardAttachment(
     command: AgentCommand;
     existingContact: AgentContact | null;
     senderAddress: Address;
-    senderPeerId: string;
+    senderPeerId?: string;
     expectedChainId?: number;
     occurredAt: string;
   },
@@ -396,8 +400,44 @@ function assertTrustedPeerSenderBinding(
   }
 }
 
+function getReceiveKeys(options: InboxProcessorOptions): ResolvedReceiveKey[] {
+  if (options.receiveKeys && options.receiveKeys.length > 0) {
+    return options.receiveKeys;
+  }
+
+  return [
+    {
+      walletAlias: "active",
+      wallet: options.wallet,
+      walletAddress: options.wallet.getAddress(),
+      pubkey: options.wallet.getPublicKey(),
+      status: "active",
+    },
+  ];
+}
+
+function resolveReceiveKeyByAddress(
+  options: InboxProcessorOptions,
+  recipientAddress: Address,
+): ResolvedReceiveKey | undefined {
+  return getReceiveKeys(options).find(
+    (entry) => normalizeAddress(entry.walletAddress, "local receive address") === recipientAddress,
+  );
+}
+
+function resolveReceiveKeyByKeyId(
+  options: InboxProcessorOptions,
+  recipientKeyId: string,
+): ResolvedReceiveKey | undefined {
+  return getReceiveKeys(options).find((entry) => entry.transportKeyId === recipientKeyId);
+}
+
 function findInboundMessage(store: StateStore, peerId: string, nonce: string): AgentMessage | null {
   return store.findAgentMessage(peerId, "inbound", nonce);
+}
+
+function findInboundMessageByMsgId(store: StateStore, msgId: string): AgentMessage | null {
+  return store.findAgentMessageByMsgId("inbound", msgId);
 }
 
 function parseCommand(plaintext: string): AgentCommand {
@@ -414,6 +454,173 @@ function parseCommand(plaintext: string): AgentCommand {
   } catch (error) {
     const reason = toErrorMessage(error);
     throw new InboxProcessingError("INVALID_COMMAND", `Invalid command payload: ${reason}`);
+  }
+}
+
+function parseV2Body(plaintext: string): {
+  msgId: string;
+  sentAt: string;
+  sender: {
+    identityWallet: string;
+    transportAddress: string;
+    cardDigest?: string;
+  };
+  command: AgentCommand;
+  attachments?: {
+    inlineCard?: AgentCommSignedIdentityArtifactBundle;
+  };
+} {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(plaintext);
+  } catch (error) {
+    const reason = toErrorMessage(error);
+    throw new InboxProcessingError("INVALID_COMMAND_JSON", `Invalid command JSON: ${reason}`);
+  }
+
+  try {
+    const parsed = encryptedEnvelopeV2BodySchema.parse(decoded);
+    const command = agentCommandSchema.parse({
+      type: parsed.command.type,
+      payload: parsed.command.payload,
+    });
+    return {
+      msgId: parsed.msgId,
+      sentAt: parsed.sentAt,
+      sender: parsed.sender,
+      command,
+      attachments: parsed.attachments,
+    };
+  } catch (error) {
+    const reason = toErrorMessage(error);
+    throw new InboxProcessingError("INVALID_COMMAND", `Invalid command payload: ${reason}`);
+  }
+}
+
+function withInlineCardAttachment(
+  command: AgentCommand,
+  inlineCard: AgentCommSignedIdentityArtifactBundle | undefined,
+): AgentCommand {
+  if (!inlineCard) {
+    return command;
+  }
+
+  switch (command.type) {
+    case "connection_invite":
+      return {
+        ...command,
+        payload: {
+          ...command.payload,
+          inlineCard,
+        },
+      };
+    case "connection_accept":
+      return {
+        ...command,
+        payload: {
+          ...command.payload,
+          inlineCard,
+        },
+      };
+    case "connection_reject":
+      return {
+        ...command,
+        payload: {
+          ...command.payload,
+          inlineCard,
+        },
+      };
+    case "connection_confirm":
+      return {
+        ...command,
+        payload: {
+          ...command.payload,
+          inlineCard,
+        },
+      };
+    default:
+      return command;
+  }
+}
+
+function assertAuthorizedSenderTransport(
+  store: StateStore,
+  input: {
+    contact: AgentContact;
+    senderAddress: Address;
+    senderIdentityWallet: string;
+    senderCardDigest?: string;
+  },
+): void {
+  const endpoint = store.listAgentTransportEndpoints(1, {
+    contactId: input.contact.contactId,
+    receiveAddress: input.senderAddress,
+    endpointStatus: "active",
+  })[0];
+  if (!endpoint) {
+    throw new InboxProcessingError(
+      "UNAUTHORIZED_TRANSPORT",
+      "Transaction sender is not an active authorized transport endpoint",
+      {
+        identityWallet: input.senderIdentityWallet,
+        senderAddress: input.senderAddress,
+      },
+    );
+  }
+  if (!endpoint.bindingDigest) {
+    throw new InboxProcessingError(
+      "MISSING_TRANSPORT_BINDING",
+      "Transport endpoint is missing a verified LIW binding",
+      {
+        identityWallet: input.senderIdentityWallet,
+        senderAddress: input.senderAddress,
+      },
+    );
+  }
+
+  const bindingArtifact = store.getAgentSignedArtifact(endpoint.bindingDigest);
+  if (!bindingArtifact || bindingArtifact.verificationStatus !== "verified") {
+    throw new InboxProcessingError(
+      "INVALID_TRANSPORT_BINDING",
+      "Transport endpoint binding is not verified",
+      {
+        identityWallet: input.senderIdentityWallet,
+        senderAddress: input.senderAddress,
+        bindingDigest: endpoint.bindingDigest,
+      },
+    );
+  }
+
+  const bindingStatus = store.getAgentArtifactStatus(endpoint.bindingDigest);
+  if (bindingStatus && bindingStatus.status === "revoked") {
+    throw new InboxProcessingError(
+      "REVOKED_TRANSPORT_BINDING",
+      "Transport endpoint binding is revoked",
+      {
+        identityWallet: input.senderIdentityWallet,
+        senderAddress: input.senderAddress,
+        bindingDigest: endpoint.bindingDigest,
+      },
+    );
+  }
+
+  if (input.senderCardDigest) {
+    const contactCardArtifact = store.getAgentSignedArtifact(input.senderCardDigest);
+    if (
+      !contactCardArtifact
+      || contactCardArtifact.artifactType !== "ContactCard"
+      || contactCardArtifact.verificationStatus !== "verified"
+    ) {
+      throw new InboxProcessingError(
+        "INVALID_CONTACT_CARD_DIGEST",
+        "Sender card digest does not resolve to a verified contact card",
+        {
+          identityWallet: input.senderIdentityWallet,
+          senderAddress: input.senderAddress,
+          cardDigest: input.senderCardDigest,
+        },
+      );
+    }
   }
 }
 
@@ -623,10 +830,12 @@ function persistInboundMessage(
     txHash: string;
     commandType: AgentCommand["type"];
     envelopeVersion: number;
+    msgId?: string;
     contactId?: string;
     identityWallet?: string;
     transportAddress: string;
     trustOutcome?: string;
+    decryptedCommandType?: AgentCommand["type"];
     ciphertext: string;
     sentAt: string;
     receivedAt: string;
@@ -634,6 +843,13 @@ function persistInboundMessage(
     error?: string;
   },
 ): AgentMessage {
+  if (input.msgId) {
+    const existingByMsgId = findInboundMessageByMsgId(store, input.msgId);
+    if (existingByMsgId) {
+      return existingByMsgId;
+    }
+  }
+
   const existingMessage = findInboundMessage(store, input.peerId, input.nonce);
   if (existingMessage) {
     return existingMessage;
@@ -647,10 +863,12 @@ function persistInboundMessage(
       nonce: input.nonce,
       commandType: input.commandType,
       envelopeVersion: input.envelopeVersion,
+      msgId: input.msgId,
       contactId: input.contactId,
       identityWallet: input.identityWallet,
       transportAddress: input.transportAddress,
       trustOutcome: input.trustOutcome,
+      decryptedCommandType: input.decryptedCommandType,
       ciphertext: input.ciphertext,
       status: input.status,
       error: input.error,
@@ -663,10 +881,17 @@ function persistInboundMessage(
     if (duplicateMessage) {
       return duplicateMessage;
     }
+    if (input.msgId) {
+      const duplicateByMsgId = findInboundMessageByMsgId(store, input.msgId);
+      if (duplicateByMsgId) {
+        return duplicateByMsgId;
+      }
+    }
     throw new InboxProcessingError("MESSAGE_INSERT_FAILED", `Failed to persist inbound message: ${reason}`, {
       txHash: input.txHash,
       peerId: input.peerId,
       nonce: input.nonce,
+      msgId: input.msgId,
     });
   }
 }
@@ -676,18 +901,21 @@ async function evaluateConnectionCommand(
   command: AgentCommand,
   contact: AgentContact | null,
   senderAddress: Address,
-  senderPeerId: string,
+  senderPeerId: string | undefined,
   expectedChainId: number | undefined,
   occurredAt: string,
+  inlineCardDecisionOverride?: InlineCardAttachmentDecision,
 ): Promise<ConnectionCommandDecision> {
-  const inlineCardDecision = await evaluateInlineCardAttachment(store, {
-    command,
-    existingContact: contact,
-    senderAddress,
-    senderPeerId,
-    expectedChainId,
-    occurredAt,
-  });
+  const inlineCardDecision =
+    inlineCardDecisionOverride
+    ?? await evaluateInlineCardAttachment(store, {
+      command,
+      existingContact: contact,
+      senderAddress,
+      senderPeerId,
+      expectedChainId,
+      occurredAt,
+    });
   const resolvedContact = inlineCardDecision.contact;
   const eventMetadata = {
     ...extractConnectionEventMetadata(command),
@@ -880,27 +1108,13 @@ async function evaluateConnectionCommand(
   };
 }
 
-export async function processInbox(
+async function processInboxV1(
   options: InboxProcessorOptions,
   event: TransactionEvent,
+  localReceiveKey: ResolvedReceiveKey,
+  envelope: ReturnType<typeof decodeEnvelope> & { version: 1 },
 ): Promise<ProcessInboxResult> {
-  const localAddress = normalizeAddress(options.wallet.getAddress(), "wallet address");
-  const eventRecipient = normalizeAddress(event.to, "transaction recipient");
-  if (eventRecipient !== localAddress) {
-    throw new InboxProcessingError("RECIPIENT_MISMATCH", "Transaction is not addressed to this wallet", {
-      txHash: event.txHash,
-      expected: localAddress,
-      received: eventRecipient,
-    });
-  }
-
-  const envelope = withInboxError(
-    "INVALID_ENVELOPE",
-    "Failed to decode calldata envelope",
-    { txHash: event.txHash },
-    () => decodeEnvelope(event.calldata),
-  );
-
+  const localAddress = normalizeAddress(localReceiveKey.walletAddress, "wallet address");
   const envelopeRecipient = normalizeAddress(envelope.recipient, "envelope recipient");
   if (envelopeRecipient !== localAddress) {
     throw new InboxProcessingError("ENVELOPE_RECIPIENT_MISMATCH", "Envelope recipient does not match wallet", {
@@ -925,7 +1139,7 @@ export async function processInbox(
     "ECDH_DERIVE_FAILED",
     "Failed to derive shared key",
     { txHash: event.txHash },
-    () => deriveSharedKey(options.wallet.privateKey, envelope.senderPubkey),
+    () => deriveSharedKey(localReceiveKey.wallet.privateKey, envelope.senderPubkey),
   );
 
   const plaintext = withInboxError(
@@ -958,6 +1172,7 @@ export async function processInbox(
       identityWallet: senderContact?.identityWallet,
       transportAddress: senderAddress,
       trustOutcome: "trusted_sender",
+      decryptedCommandType: command.type,
       ciphertext: envelope.ciphertext,
       status: "decrypted",
       sentAt: envelope.timestamp,
@@ -983,6 +1198,7 @@ export async function processInbox(
       identityWallet: senderContact?.identityWallet,
       transportAddress: senderAddress,
       trustOutcome: "unknown_business_rejected",
+      decryptedCommandType: command.type,
       ciphertext: envelope.ciphertext,
       status: "rejected",
       error: `unknown business command rejected for untrusted sender: ${command.type}`,
@@ -1018,6 +1234,7 @@ export async function processInbox(
     identityWallet: controlPlaneDecision.contact?.identityWallet ?? senderContact?.identityWallet,
     transportAddress: senderAddress,
     trustOutcome: controlPlaneDecision.trustOutcome,
+    decryptedCommandType: command.type,
     ciphertext: envelope.ciphertext,
     status: controlPlaneDecision.messageStatus,
     error: controlPlaneDecision.messageError,
@@ -1057,4 +1274,256 @@ export async function processInbox(
     message,
     command,
   };
+}
+
+async function processInboxV2(
+  options: InboxProcessorOptions,
+  event: TransactionEvent,
+  _localReceiveKey: ResolvedReceiveKey,
+  envelope: ReturnType<typeof decodeEnvelope> & { version: 2 },
+): Promise<ProcessInboxResult> {
+  if (envelope.kex.suite !== AGENT_COMM_KEX_SUITE_V2) {
+    throw new InboxProcessingError("UNSUPPORTED_KEX_SUITE", "Unsupported agent-comm v2 key exchange suite", {
+      txHash: event.txHash,
+      suite: envelope.kex.suite,
+    });
+  }
+
+  const resolvedByKeyId = resolveReceiveKeyByKeyId(options, envelope.kex.recipientKeyId);
+  if (!resolvedByKeyId) {
+    throw new InboxProcessingError(
+      "UNKNOWN_RECIPIENT_KEY",
+      "No local receive key matches envelope recipientKeyId",
+      {
+        txHash: event.txHash,
+        recipientKeyId: envelope.kex.recipientKeyId,
+      },
+    );
+  }
+
+  const eventRecipient = normalizeAddress(event.to, "transaction recipient");
+  const keyRecipient = normalizeAddress(resolvedByKeyId.walletAddress, "local receive address");
+  if (eventRecipient != keyRecipient) {
+    throw new InboxProcessingError(
+      "RECIPIENT_KEY_MISMATCH",
+      "Transaction recipient does not match the local key selected by recipientKeyId",
+      {
+        txHash: event.txHash,
+        expected: keyRecipient,
+        received: eventRecipient,
+        recipientKeyId: envelope.kex.recipientKeyId,
+      },
+    );
+  }
+
+  const senderAddress = normalizeAddress(event.from, "transaction sender");
+  const sharedKey = withInboxError(
+    "ECDH_DERIVE_FAILED",
+    "Failed to derive shared key",
+    { txHash: event.txHash, recipientKeyId: envelope.kex.recipientKeyId },
+    () => deriveSharedKey(resolvedByKeyId.wallet.privateKey, envelope.kex.ephemeralPubkey),
+  );
+  const plaintext = withInboxError(
+    "DECRYPT_FAILED",
+    "Failed to decrypt inbound envelope",
+    { txHash: event.txHash, recipientKeyId: envelope.kex.recipientKeyId },
+    () => decrypt(envelope.ciphertext, sharedKey),
+  );
+  const body = parseV2Body(plaintext);
+  const senderTransportAddress = normalizeAddress(body.sender.transportAddress, "sender transport address");
+  if (senderTransportAddress !== senderAddress) {
+    throw new InboxProcessingError(
+      "SENDER_TRANSPORT_MISMATCH",
+      "Decrypted sender transportAddress does not match transaction sender",
+      {
+        txHash: event.txHash,
+        expected: senderAddress,
+        received: senderTransportAddress,
+      },
+    );
+  }
+
+  const existingContact = options.store.getAgentContactByIdentityWallet(body.sender.identityWallet);
+  if (!existingContact || existingContact.status !== "trusted") {
+    enforceUnknownInboundRateLimit(options.store, senderAddress, event.timestamp);
+  }
+
+  const command = withInlineCardAttachment(body.command, body.attachments?.inlineCard);
+  const inlineCardDecision = await evaluateInlineCardAttachment(options.store, {
+    command,
+    existingContact,
+    senderAddress,
+    senderPeerId: existingContact?.legacyPeerId,
+    expectedChainId: options.expectedChainId,
+    occurredAt: event.timestamp,
+  });
+  const resolvedContact = inlineCardDecision.contact ?? existingContact;
+
+  if (!resolvedContact && command.type === "connection_invite" && !body.attachments?.inlineCard) {
+    const message = persistInboundMessage(options.store, {
+      peerId: resolveInboundMessagePeerId({ senderAddress }),
+      txHash: event.txHash,
+      nonce: body.msgId,
+      msgId: body.msgId,
+      commandType: command.type,
+      envelopeVersion: envelope.version,
+      identityWallet: body.sender.identityWallet,
+      transportAddress: senderAddress,
+      trustOutcome: "missing_inline_card",
+      decryptedCommandType: command.type,
+      ciphertext: envelope.ciphertext,
+      status: "rejected",
+      error: "connection_invite rejected: missing inline card for unknown v2 sender",
+      sentAt: body.sentAt,
+      receivedAt: event.timestamp,
+    });
+    return { message, command };
+  }
+
+  if (resolvedContact) {
+    assertAuthorizedSenderTransport(options.store, {
+      contact: resolvedContact,
+      senderAddress,
+      senderIdentityWallet: body.sender.identityWallet,
+      senderCardDigest: body.sender.cardDigest,
+    });
+  }
+
+  if (isBusinessCommandType(command.type)) {
+    if (!resolvedContact || resolvedContact.status !== "trusted") {
+      const message = persistInboundMessage(options.store, {
+        peerId: resolveInboundMessagePeerId({
+          contact: resolvedContact ?? undefined,
+          senderAddress,
+        }),
+        txHash: event.txHash,
+        nonce: body.msgId,
+        msgId: body.msgId,
+        commandType: command.type,
+        envelopeVersion: envelope.version,
+        contactId: resolvedContact?.contactId,
+        identityWallet: body.sender.identityWallet,
+        transportAddress: senderAddress,
+        trustOutcome: "unknown_business_rejected",
+        decryptedCommandType: command.type,
+        ciphertext: envelope.ciphertext,
+        status: "rejected",
+        error: `unknown business command rejected for untrusted sender: ${command.type}`,
+        sentAt: body.sentAt,
+        receivedAt: event.timestamp,
+      });
+      return { message, command };
+    }
+
+    const message = persistInboundMessage(options.store, {
+      peerId: resolveInboundMessagePeerId({
+        contact: resolvedContact,
+        senderAddress,
+      }),
+      txHash: event.txHash,
+      nonce: body.msgId,
+      msgId: body.msgId,
+      commandType: command.type,
+      envelopeVersion: envelope.version,
+      contactId: resolvedContact.contactId,
+      identityWallet: body.sender.identityWallet,
+      transportAddress: senderAddress,
+      trustOutcome: "trusted_sender",
+      decryptedCommandType: command.type,
+      ciphertext: envelope.ciphertext,
+      status: "decrypted",
+      sentAt: body.sentAt,
+      receivedAt: event.timestamp,
+    });
+    return { message, command };
+  }
+
+  const controlPlaneDecision = await evaluateConnectionCommand(
+    options.store,
+    command,
+    existingContact,
+    senderAddress,
+    resolvedContact?.legacyPeerId,
+    options.expectedChainId,
+    event.timestamp,
+    inlineCardDecision,
+  );
+  const message = persistInboundMessage(options.store, {
+    peerId: resolveInboundMessagePeerId({
+      contact: controlPlaneDecision.contact ?? resolvedContact ?? undefined,
+      senderAddress,
+    }),
+    txHash: event.txHash,
+    nonce: body.msgId,
+    msgId: body.msgId,
+    commandType: command.type,
+    envelopeVersion: envelope.version,
+    contactId: controlPlaneDecision.contact?.contactId ?? resolvedContact?.contactId,
+    identityWallet: body.sender.identityWallet,
+    transportAddress: senderAddress,
+    trustOutcome: controlPlaneDecision.trustOutcome,
+    decryptedCommandType: command.type,
+    ciphertext: envelope.ciphertext,
+    status: controlPlaneDecision.messageStatus,
+    error: controlPlaneDecision.messageError,
+    sentAt: body.sentAt,
+    receivedAt: event.timestamp,
+  });
+
+  if (controlPlaneDecision.contact) {
+    const eventType: AgentConnectionEventType =
+      command.type === "connection_invite"
+        ? "connection_invite"
+        : command.type === "connection_accept"
+          ? "connection_accept"
+          : command.type === "connection_reject"
+            ? "connection_reject"
+            : "connection_confirm";
+    options.store.upsertAgentConnectionEvent({
+      contactId: controlPlaneDecision.contact.contactId,
+      identityWallet: controlPlaneDecision.contact.identityWallet,
+      direction: "inbound",
+      eventType,
+      eventStatus: controlPlaneDecision.eventStatus ?? "pending",
+      messageId: message.id,
+      txHash: event.txHash,
+      reason: controlPlaneDecision.eventReason ?? controlPlaneDecision.messageError,
+      occurredAt: event.timestamp,
+      metadata: {
+        ...(controlPlaneDecision.eventMetadata ?? {}),
+        senderIdentityWallet: body.sender.identityWallet,
+        trustedSender: controlPlaneDecision.contact.status === "trusted",
+        envelopeVersion: envelope.version,
+        recipientKeyId: envelope.kex.recipientKeyId,
+      },
+    });
+  }
+
+  return { message, command };
+}
+
+export async function processInbox(
+  options: InboxProcessorOptions,
+  event: TransactionEvent,
+): Promise<ProcessInboxResult> {
+  const eventRecipient = normalizeAddress(event.to, "transaction recipient");
+  const localReceiveKey = resolveReceiveKeyByAddress(options, eventRecipient);
+  if (!localReceiveKey) {
+    throw new InboxProcessingError("RECIPIENT_MISMATCH", "Transaction is not addressed to a configured local receive wallet", {
+      txHash: event.txHash,
+      received: eventRecipient,
+    });
+  }
+
+  const envelope = withInboxError(
+    "INVALID_ENVELOPE",
+    "Failed to decode calldata envelope",
+    { txHash: event.txHash },
+    () => decodeEnvelope(event.calldata),
+  );
+
+  if (envelope.version === 1) {
+    return processInboxV1(options, event, localReceiveKey, envelope);
+  }
+  return processInboxV2(options, event, localReceiveKey, envelope);
 }
