@@ -148,4 +148,179 @@ describe("tx-listener inbound filtering", () => {
       }),
     );
   });
+
+  it("uses receipt-indexed catch-up when behind and only fetches matching transactions", async () => {
+    const targetAddress = "0x1111111111111111111111111111111111111111";
+    const matchingTxHash = "0xmatch";
+    const nonMatchingTxHash = "0xother";
+    const getBlockReceipts = vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => {
+      if (blockNumber === 7n) {
+        return [
+          {
+            to: "0x3333333333333333333333333333333333333333",
+            transactionHash: nonMatchingTxHash,
+            transactionIndex: 0,
+          },
+          {
+            to: targetAddress,
+            transactionHash: matchingTxHash,
+            transactionIndex: 1,
+          },
+        ];
+      }
+      return [
+        {
+          to: "0x4444444444444444444444444444444444444444",
+          transactionHash: "0xunused",
+          transactionIndex: 0,
+        },
+      ];
+    });
+    const getBlock = vi.fn(async ({ includeTransactions }: { includeTransactions?: boolean }) => {
+      expect(includeTransactions).toBeUndefined();
+      return {
+        timestamp: 1n,
+      };
+    });
+    const getTransaction = vi.fn(async ({ hash }: { hash: string }) => {
+      if (hash !== matchingTxHash) {
+        throw new Error(`unexpected transaction hash lookup: ${hash}`);
+      }
+      return {
+        hash: matchingTxHash,
+        from: "0x2222222222222222222222222222222222222222",
+        to: targetAddress,
+        input: "0x1234",
+        blockNumber: 7n,
+      };
+    });
+
+    createPublicClientMock.mockReturnValue({
+      getChainId: vi.fn(async () => 196),
+      getBlockNumber: vi.fn(async () => 8n),
+      getBlockReceipts,
+      getBlock,
+      getTransaction,
+    });
+
+    const onTransaction = vi.fn(async () => undefined);
+    const store = {
+      getListenerCursor: vi.fn(() => null),
+      upsertListenerCursor: vi.fn(),
+    } as unknown as StateStore;
+
+    const stop = startListener(
+      {
+        rpcUrl: "http://localhost:8545",
+        chainId: 196,
+        address: targetAddress,
+        pollIntervalMs: 1000,
+        store,
+        mode: "poll",
+        startBlockNumber: 7n,
+      },
+      onTransaction,
+    );
+
+    await vi.waitFor(() => {
+      expect(onTransaction).toHaveBeenCalledTimes(1);
+      expect(store.upsertListenerCursor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cursor: "8",
+        }),
+      );
+    });
+    stop();
+
+    expect(getBlockReceipts).toHaveBeenCalledTimes(2);
+    expect(getTransaction).toHaveBeenCalledTimes(1);
+    expect(getBlock).toHaveBeenCalledTimes(1);
+    expect(onTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHash: matchingTxHash,
+        to: targetAddress,
+      }),
+    );
+  });
+
+  it("falls back to full block scan when block receipts are unsupported", async () => {
+    const targetAddress = "0x1111111111111111111111111111111111111111";
+    const inboundTx = {
+      hash: "0xaaa",
+      from: "0x2222222222222222222222222222222222222222",
+      to: targetAddress,
+      input: "0x1234",
+      blockNumber: 6n,
+    };
+    const unrelatedTx = {
+      hash: "0xbbb",
+      from: "0x3333333333333333333333333333333333333333",
+      to: "0x4444444444444444444444444444444444444444",
+      input: "0x9999",
+      blockNumber: 6n,
+    };
+    const getBlockReceipts = vi.fn(async () => {
+      throw Object.assign(new Error("the method eth_getBlockReceipts does not exist/is not available"), {
+        code: -32601,
+      });
+    });
+    const getBlock = vi.fn(async ({ blockNumber, includeTransactions }: { blockNumber: bigint; includeTransactions?: boolean }) => {
+      expect(includeTransactions).toBe(true);
+      if (blockNumber === 6n) {
+        return {
+          timestamp: 1n,
+          transactions: [inboundTx, unrelatedTx],
+        };
+      }
+      return {
+        timestamp: 2n,
+        transactions: [],
+      };
+    });
+
+    createPublicClientMock.mockReturnValue({
+      getChainId: vi.fn(async () => 196),
+      getBlockNumber: vi.fn(async () => 7n),
+      getBlockReceipts,
+      getBlock,
+    });
+
+    const onTransaction = vi.fn(async () => undefined);
+    const store = {
+      getListenerCursor: vi.fn(() => null),
+      upsertListenerCursor: vi.fn(),
+    } as unknown as StateStore;
+
+    const stop = startListener(
+      {
+        rpcUrl: "http://localhost:8545",
+        chainId: 196,
+        address: targetAddress,
+        pollIntervalMs: 1000,
+        store,
+        mode: "poll",
+        startBlockNumber: 6n,
+      },
+      onTransaction,
+    );
+
+    await vi.waitFor(() => {
+      expect(onTransaction).toHaveBeenCalledTimes(1);
+      expect(store.upsertListenerCursor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cursor: "7",
+        }),
+      );
+    });
+    stop();
+
+    expect(getBlockReceipts).toHaveBeenCalledTimes(1);
+    expect(getBlock).toHaveBeenCalledTimes(2);
+    expect(onTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHash: inboundTx.hash,
+        to: targetAddress,
+      }),
+    );
+  });
 });

@@ -5,6 +5,7 @@ import {
   type Address,
   type Hex,
   type Transaction,
+  type TransactionReceipt,
 } from "viem";
 import type { StateStore } from "../state-store";
 
@@ -30,6 +31,8 @@ export interface TransactionEvent {
 
 class ChainIdMismatchError extends Error {}
 type MinedTransaction = Transaction & { to: Address; blockNumber: bigint };
+type BlockReceiptSupport = "unknown" | "supported" | "unsupported";
+const CATCH_UP_BACKLOG_THRESHOLD = 1n;
 
 function normalizeAddress(value: string, label: string): Address {
   try {
@@ -57,6 +60,29 @@ function blockTimestampToIso(timestamp: bigint): string {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isBlockReceiptsUnsupported(error: unknown): boolean {
+  if (
+    typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === -32601
+  ) {
+    return true;
+  }
+
+  const message = toErrorMessage(error).toLowerCase();
+  if (!message.includes("eth_getblockreceipts")) {
+    return false;
+  }
+  return (
+    message.includes("method not found")
+    || message.includes("unsupported")
+    || message.includes("not available")
+    || message.includes("does not exist")
+    || message.includes("-32601")
+  );
 }
 
 function normalizeStartBlockNumber(startBlockNumber: bigint | undefined): bigint | undefined {
@@ -115,6 +141,16 @@ function toTransactionEvent(transaction: MinedTransaction, timestamp: string): T
   };
 }
 
+function sortReceiptsByTransactionIndex(
+  left: Pick<TransactionReceipt, "transactionIndex">,
+  right: Pick<TransactionReceipt, "transactionIndex">,
+): number {
+  if (left.transactionIndex === right.transactionIndex) {
+    return 0;
+  }
+  return left.transactionIndex < right.transactionIndex ? -1 : 1;
+}
+
 export function startListener(
   options: TxListenerOptions,
   onTransaction: (event: TransactionEvent) => void | Promise<void>,
@@ -132,6 +168,7 @@ export function startListener(
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
   let isPolling = false;
+  let blockReceiptSupport: BlockReceiptSupport = "unknown";
 
   const reportError = (error: unknown): void => {
     const normalized =
@@ -173,12 +210,56 @@ export function startListener(
       if (nextBlockNumber > latestBlockNumber) {
         return;
       }
+      const useReceiptCatchUp =
+        latestBlockNumber - nextBlockNumber >= CATCH_UP_BACKLOG_THRESHOLD;
 
       for (
         let blockNumber = nextBlockNumber;
         blockNumber <= latestBlockNumber && !stopped;
         blockNumber += 1n
       ) {
+        if (useReceiptCatchUp && blockReceiptSupport !== "unsupported") {
+          let receipts: TransactionReceipt[];
+          try {
+            receipts = await publicClient.getBlockReceipts({ blockNumber });
+            blockReceiptSupport = "supported";
+          } catch (error) {
+            if (!isBlockReceiptsUnsupported(error)) {
+              throw error;
+            }
+            blockReceiptSupport = "unsupported";
+            receipts = [];
+          }
+
+          if (blockReceiptSupport === "supported") {
+            const matchingReceipts = receipts
+              .filter((receipt) => sameAddress(receipt.to, targetAddress))
+              .sort(sortReceiptsByTransactionIndex);
+
+            if (matchingReceipts.length > 0) {
+              const block = await publicClient.getBlock({ blockNumber });
+              const timestamp = blockTimestampToIso(block.timestamp);
+
+              for (const receipt of matchingReceipts) {
+                const transaction = await publicClient.getTransaction({
+                  hash: receipt.transactionHash,
+                });
+                if (!isRelevantTransaction(transaction, targetAddress)) {
+                  continue;
+                }
+                await onTransaction(toTransactionEvent(transaction, timestamp));
+              }
+            }
+
+            options.store.upsertListenerCursor({
+              address: targetAddress,
+              chainId: options.chainId,
+              cursor: blockNumber.toString(),
+            });
+            continue;
+          }
+        }
+
         const block = await publicClient.getBlock({
           blockNumber,
           includeTransactions: true,
