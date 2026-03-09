@@ -169,18 +169,37 @@ describe("tx-listener inbound filtering", () => {
   it("uses receipt-indexed catch-up when behind and only fetches matching transactions", async () => {
     const matchingTxHash = "0xmatch";
     const nonMatchingTxHash = "0xother";
-    const getBlockReceipts = vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => {
+    const requestMock = vi.fn(async ({ method, params }: { method: string; params: any[] }) => {
+      if (method !== "eth_getBlockReceipts") throw new Error(`unexpected RPC: ${method}`);
+      const blockHex = params[0] as string;
+      const blockNumber = BigInt(blockHex);
       if (blockNumber === 7n) {
         return [
           {
             to: "0x3333333333333333333333333333333333333333",
             transactionHash: nonMatchingTxHash,
-            transactionIndex: 0,
+            transactionIndex: "0x0",
+            blockNumber: "0x7",
+            blockHash: "0x0",
+            cumulativeGasUsed: "0x0",
+            gasUsed: "0x0",
+            logs: [],
+            logsBloom: "0x0",
+            status: "0x1",
+            type: "0x0",
           },
           {
             to: targetAddress,
             transactionHash: matchingTxHash,
-            transactionIndex: 1,
+            transactionIndex: "0x1",
+            blockNumber: "0x7",
+            blockHash: "0x0",
+            cumulativeGasUsed: "0x0",
+            gasUsed: "0x0",
+            logs: [],
+            logsBloom: "0x0",
+            status: "0x1",
+            type: "0x0",
           },
         ];
       }
@@ -188,7 +207,15 @@ describe("tx-listener inbound filtering", () => {
         {
           to: "0x4444444444444444444444444444444444444444",
           transactionHash: "0xunused",
-          transactionIndex: 0,
+          transactionIndex: "0x0",
+          blockNumber: "0x8",
+          blockHash: "0x0",
+          cumulativeGasUsed: "0x0",
+          gasUsed: "0x0",
+          logs: [],
+          logsBloom: "0x0",
+          status: "0x1",
+          type: "0x0",
         },
       ];
     });
@@ -214,7 +241,7 @@ describe("tx-listener inbound filtering", () => {
     createPublicClientMock.mockReturnValue({
       getChainId: vi.fn(async () => chainId),
       getBlockNumber: vi.fn(async () => 8n),
-      getBlockReceipts,
+      request: requestMock,
       getBlock,
       getTransaction,
     });
@@ -233,7 +260,7 @@ describe("tx-listener inbound filtering", () => {
     });
     stop();
 
-    expect(getBlockReceipts).toHaveBeenCalledTimes(2);
+    expect(requestMock).toHaveBeenCalledTimes(2);
     expect(getTransaction).toHaveBeenCalledTimes(1);
     expect(getBlock).toHaveBeenCalledTimes(1);
     expect(onTransaction).toHaveBeenCalledWith(
@@ -259,7 +286,7 @@ describe("tx-listener inbound filtering", () => {
       input: "0x9999",
       blockNumber: 6n,
     };
-    const getBlockReceipts = vi.fn(async () => {
+    const requestMock = vi.fn(async () => {
       throw Object.assign(new Error("the method eth_getBlockReceipts does not exist/is not available"), {
         code: -32601,
       });
@@ -281,7 +308,7 @@ describe("tx-listener inbound filtering", () => {
     createPublicClientMock.mockReturnValue({
       getChainId: vi.fn(async () => chainId),
       getBlockNumber: vi.fn(async () => 7n),
-      getBlockReceipts,
+      request: requestMock,
       getBlock,
     });
 
@@ -299,7 +326,7 @@ describe("tx-listener inbound filtering", () => {
     });
     stop();
 
-    expect(getBlockReceipts).toHaveBeenCalledTimes(1);
+    expect(requestMock).toHaveBeenCalledTimes(1);
     expect(getBlock).toHaveBeenCalledTimes(2);
     expect(onTransaction).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -1,7 +1,9 @@
 import {
   createPublicClient,
+  formatTransactionReceipt,
   getAddress,
   http,
+  numberToHex,
   type Address,
   type Hex,
   type Transaction,
@@ -212,9 +214,13 @@ export function startListener(
     blockNumber: bigint,
   ): Promise<TransactionReceipt[] | null> => {
     try {
-      const receipts = await publicClient.getBlockReceipts({ blockNumber });
+      const raw = await publicClient.request({
+        method: "eth_getBlockReceipts" as any,
+        params: [numberToHex(blockNumber)],
+      });
       blockReceiptSupport = "supported";
-      return receipts;
+      if (!Array.isArray(raw)) return [];
+      return (raw as any[]).map((r) => formatTransactionReceipt(r));
     } catch (error) {
       if (!isBlockReceiptsUnsupported(error)) {
         throw error;
