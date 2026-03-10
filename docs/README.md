@@ -5,6 +5,7 @@ This index organizes Agent-Comm documentation from first deployment to protocol 
 ## Getting Started
 
 - [One Pager](AGENT_COMM_ONE_PAGER.md): Human-friendly overview + OpenClaw-first onboarding story.
+- [AlphaOS Operations Guide](ALPHAOS_OPERATIONS.md): Operator runbook for the arbitrage engine — config, startup, observation, tuning, data export.
 - [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md): Battle-tested, step-by-step setup for production Agent-Comm on X Layer.
 - [Operations Guide](AGENT_COMM_V2_OPERATIONS.md): Default operator/developer runbook for v2 contact-first workflows.
 

@@ -59,6 +59,7 @@ npm run demo:smoke:live     # Live OnchainOS integration smoke test
 
 ## Algorithm Notes
 - `docs/ALGORITHM.md`: 中文算法说明（盈利原理、风险点、公式、门控与熔断）
+- `docs/ALPHAOS_OPERATIONS.md`: Operator runbook — configuration, startup, observation, tuning, data export
 - `docs/JUDGE_ONE_PAGER.md`: 一页说明（面向评审）
 - `docs/OPENCLAW_DISCOVERY_PLAYBOOK.md`: OpenClaw 双向编排接入手册（start/report/approve/hook）
 
