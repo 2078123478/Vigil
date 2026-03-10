@@ -61,6 +61,24 @@ https://example.com/agent-card#v=1&bundle=<base64url(bundle-json)>
 
 That keeps the transport deterministic and lets the current CLI parse the payload without network fetches.
 
+## Human-friendly HTML wrapper (optional)
+
+For distribution, it is often useful to wrap the canonical `shareUrl` in a clean, human-readable artifact (while preserving a deterministic, offline import path).
+
+This repo supports exporting a **self-contained HTML contact card** that:
+- renders a red/black OpenClaw-branded card
+- embeds the canonical `shareUrl`
+- renders a scannable QR code
+- works offline (no external assets)
+
+CLI:
+```bash
+VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:card:export --html --output ./my-card.html
+```
+
+Example fixture (for docs/tests only):
+- `docs/examples/agent-comm/sample-agent.card.html`
+
 ## Example fixture
 
 Illustrative sample bundle:

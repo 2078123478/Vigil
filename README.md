@@ -132,6 +132,7 @@ VAULT_MASTER_PASSWORD=pass123 npm run dev -- vault:get trader-key
 - 🚀 **Production Deployment Guide**: `docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md` — Battle-tested 6-step deployment
 - 💡 **Revolutionary Design**: `docs/AGENT_COMM_REVOLUTIONARY_DESIGN.md` — Why this protocol matters
 - 🔔 **Webhook Notification (Optional)**: `docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md#webhook-notification-optional` — Wake OpenClaw or any webhook-compatible orchestrator on inbound messages
+- 🪪 **Shareable Contact Card (HTML + QR)**: `agent-comm:card:export --html` — A self-contained, human-friendly card you can host/share publicly; recipients can import and request a connection.
 
 **Protocol Documentation:**
 - v2 协议草案（架构评审版）：`docs/AGENT_COMM_PROTOCOL_V2_DRAFT.md`，包含签名标准推荐、陌生人建联/冷启动消息策略、direct-tx 隐私边界
@@ -172,20 +173,30 @@ npm run dev -- agent-comm:help
 ```bash
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:wallet:init-demo
 ```
-5. Export a contact card bundle. The CLI response now includes a `shareUrl` that can be copied directly into a QR code or short-link wrapper:
+5. Export a contact card bundle (machine-friendly JSON) or a shareable card (human-friendly HTML). Both emit a canonical `shareUrl` that can be used for copy/paste, QR codes, or short-link wrappers:
 ```bash
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:card:export --output ./my-card.json
+VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:card:export --html --output ./my-card.html
 ```
+Preview (HTML card):
+
+![Agent-Comm shareable contact card preview](docs/assets/agent-comm-card-preview.png)
+
+See a non-cryptographic example fixture (for docs/tests only):
+- `docs/examples/agent-comm/sample-agent.card.html`
+
+Note: publishing a card is not "auto-trust". The receiver can import it and **request** a connection; the owner can approve or reject.
 6. Import a peer card from a file, raw JSON string, or the exported `shareUrl`:
 ```bash
 npm run dev -- agent-comm:card:import ./peer-card.json
 npm run dev -- agent-comm:card:import 'agentcomm://card?v=1&bundle=<base64url>'
 ```
-7. List contacts, send an invite, and accept it from the receiver side:
+7. List contacts, request a connection, then accept/reject it on the receiving side (explicit consent gate):
 ```bash
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:contacts:list
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:connect:invite <contactId>
 VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:connect:accept <contactId>
+VAULT_MASTER_PASSWORD=pass123 npm run dev -- agent-comm:connect:reject <contactId>
 ```
 8. Send a trusted business command through the existing CLI surface using either `contact:<contactId>` or a compatible `peerId`:
 ```bash

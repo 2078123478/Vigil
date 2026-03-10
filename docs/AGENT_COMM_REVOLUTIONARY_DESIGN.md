@@ -32,7 +32,7 @@ Trust is not "configured" — it's **proven**:
 Unlike traditional "add peer by IP:port", Agent-Comm uses **signed contact cards**:
 
 ```
-Agent A exports card → Agent B imports card → Trust established
+Agent A publishes card → Agent B imports card → Agent B requests connection → Agent A approves/rejects
 ```
 
 Cards contain:
@@ -103,8 +103,11 @@ No catastrophic failures.
 # Initialize
 npm run dev -- agent-comm:wallet:init
 
-# Export card
+# Export a machine-friendly JSON card bundle
 npm run dev -- agent-comm:card:export --output card.json
+
+# Or export a shareable, human-friendly HTML contact card (self-contained)
+npm run dev -- agent-comm:card:export --html --output card.html
 
 # Import remote card
 npm run dev -- agent-comm:card:import remote-card.json

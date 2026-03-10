@@ -19,6 +19,7 @@ This index organizes Agent-Comm documentation from first deployment to protocol 
 - [Artifact Contracts](AGENT_COMM_V2_ARTIFACT_CONTRACTS.md): Canonical EIP-712 typed-data contracts for v2 artifacts.
 - [Card Packaging](AGENT_COMM_V2_CARD_PACKAGING.md): Canonical share/import packaging format for signed contact bundles.
 - [Extensions Design](AGENT_COMM_EXTENSIONS_DESIGN.md): Draft extension directions and minimal implementation plans.
+- [Examples](examples/agent-comm/): Sample bundles, share URLs, and a self-contained HTML contact card.
 
 ## Legacy
 
