@@ -14,6 +14,7 @@ import type {
   TradeResult,
 } from "../types";
 import { StateStore } from "./state-store";
+import { calculateCostBreakdown, calculateGrossEdgeBps } from "./cost-model";
 
 type AuthMode = "bearer" | "api-key" | "hmac";
 type SubmitChannel = "public" | "private-rpc" | "private-relay";
@@ -56,6 +57,12 @@ export interface OnchainOsClientOptions {
   usePrivateSubmit?: boolean;
   quoteStaleMs?: number;
   store?: StateStore;
+  takerFeeBps?: number;
+  mevPenaltyBps?: number;
+  slippageBps?: number;
+  liquidityUsdDefault?: number;
+  volatilityDefault?: number;
+  avgLatencyMsDefault?: number;
 }
 
 class OnchainApiError extends Error {
@@ -85,6 +92,36 @@ function seededNoise(seed: string): number {
 function toNumber(input: unknown, fallback = 0): number {
   const value = Number(input);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function toPositiveIntegerString(input: unknown): string | null {
+  if (typeof input === "string") {
+    const value = input.trim();
+    if (/^\d+$/.test(value) && BigInt(value) > 0n) {
+      return value;
+    }
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return String(Math.floor(numeric));
+    }
+    return null;
+  }
+  if (typeof input === "number" && Number.isFinite(input) && input > 0) {
+    return String(Math.floor(input));
+  }
+  return null;
+}
+
+function toTokenUnits(input: unknown, decimals: number, fallback = 0): number {
+  const value = Number(input);
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return value / 10 ** Math.max(0, decimals);
+}
+
+function asFiniteNumber(input: unknown): number | null {
+  return typeof input === "number" && Number.isFinite(input) ? input : null;
 }
 
 function splitPair(pair: string): { base: string; quote: string } {
@@ -191,7 +228,7 @@ export class OnchainOsClient {
         toTokenAddress: baseToken.address,
         amount,
         userWalletAddress,
-        slippage: "0.5",
+        slippage: this.resolveSwapSlippage(),
       });
       swapPath = this.diagnostics.lastUsedPath;
 
@@ -322,11 +359,22 @@ export class OnchainOsClient {
     const quoteJobs = dexes.map(async (dex): Promise<Quote | null> => {
       const startedAt = Date.now();
       try {
-        const quote = await this.getQuoteV6({
+        const buyQuote = await this.getQuoteV6({
           chainIndex: this.options.chainIndex,
           fromTokenAddress: quoteToken.address,
           toTokenAddress: baseToken.address,
           amount,
+          dexIds: dex,
+        });
+        const sellAmount = toPositiveIntegerString(buyQuote.toTokenAmount);
+        if (!sellAmount) {
+          return null;
+        }
+        const sellQuote = await this.getQuoteV6({
+          chainIndex: this.options.chainIndex,
+          fromTokenAddress: baseToken.address,
+          toTokenAddress: quoteToken.address,
+          amount: sellAmount,
           dexIds: dex,
         });
         const receivedAt = Date.now();
@@ -334,17 +382,25 @@ export class OnchainOsClient {
           return null;
         }
 
-        const from = toNumber(quote.fromTokenAmount, 1);
-        const to = toNumber(quote.toTokenAmount, 1);
-        const basePrice = from > 0 && to > 0 ? from / to : 0;
-        const midpoint = basePrice > 0 ? basePrice : 3000;
-        const halfSpread = midpoint * 0.00085;
+        const buySpendQuote = toTokenUnits(buyQuote.fromTokenAmount, quoteToken.decimals);
+        const buyReceiveBase = toTokenUnits(buyQuote.toTokenAmount, baseToken.decimals);
+        const sellSpendBase = toTokenUnits(sellQuote.fromTokenAmount, baseToken.decimals);
+        const sellReceiveQuote = toTokenUnits(sellQuote.toTokenAmount, quoteToken.decimals);
+        if (buySpendQuote <= 0 || buyReceiveBase <= 0 || sellSpendBase <= 0 || sellReceiveQuote <= 0) {
+          return null;
+        }
+        const ask = buySpendQuote / buyReceiveBase;
+        const bid = sellReceiveQuote / sellSpendBase;
         return {
           pair,
           dex,
-          bid: Number((midpoint - halfSpread).toFixed(6)),
-          ask: Number((midpoint + halfSpread).toFixed(6)),
-          gasUsd: Math.max(0.5, toNumber(quote.estimateGasFee, this.options.gasUsdDefault)),
+          bid: Number(bid.toFixed(6)),
+          ask: Number(ask.toFixed(6)),
+          gasUsd: Math.max(
+            0.5,
+            toNumber(buyQuote.estimateGasFee, this.options.gasUsdDefault),
+            toNumber(sellQuote.estimateGasFee, this.options.gasUsdDefault),
+          ),
           ts: new Date(receivedAt).toISOString(),
         };
       } catch (error) {
@@ -425,7 +481,7 @@ export class OnchainOsClient {
       amount: String(buyAmountRaw),
       dexIds: plan.buyDex,
       userWalletAddress,
-      slippage: "0.5",
+      slippage: this.resolveSwapSlippage(),
     });
 
     const sellAmount = Math.max(1, Math.floor(toNumber(buyQuote.toTokenAmount, 0)));
@@ -448,7 +504,7 @@ export class OnchainOsClient {
       amount: String(sellAmount),
       dexIds: plan.sellDex,
       userWalletAddress,
-      slippage: "0.5",
+      slippage: this.resolveSwapSlippage(),
     });
 
     if (this.options.requireSimulate) {
@@ -488,16 +544,21 @@ export class OnchainOsClient {
       });
       await this.getHistoryV6(atomicBroadcast.txHash);
 
-      const grossUsd = this.estimateGrossFromQuotes(quoteToken.decimals, buyQuote, sellQuote);
-      const feeUsd = this.estimateFeeFromQuotes(plan.notionalUsd, buyQuote, sellQuote);
-      const netUsd = grossUsd - feeUsd;
+      const executionPnl = this.estimateConservativeExecutionPnl({
+        plan,
+        quoteTokenDecimals: quoteToken.decimals,
+        baseTokenDecimals: baseToken.decimals,
+        buyQuote,
+        sellQuote,
+        startedAt,
+      });
       return {
         success: true,
         txHash: atomicBroadcast.txHash,
         status: "confirmed",
-        grossUsd,
-        feeUsd,
-        netUsd,
+        grossUsd: executionPnl.grossUsd,
+        feeUsd: executionPnl.feeUsd,
+        netUsd: executionPnl.netUsd,
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
@@ -553,26 +614,65 @@ export class OnchainOsClient {
         dexIds: [plan.sellDex, plan.buyDex],
         userWalletAddress,
       });
-      const partialMessage = `buy leg ok tx=${buyLeg.broadcast.txHash}; sell leg failed on ${plan.sellDex}; hedge=${hedge}`;
+      const partialMessage =
+        `buy leg ok tx=${buyLeg.broadcast.txHash}; sell leg failed on ${plan.sellDex}; ` +
+        `hedge=${hedge.leg ? `submitted:${hedge.leg.broadcast.txHash};dex=${hedge.leg.dexId}` : `failed:${hedge.error}`}`;
       this.options.store?.insertAlert("error", "dual_leg_partial_fill", partialMessage);
-      throw new OnchainApiError(`${partialMessage}; err=${String(error)}`, 409, "DUAL_LEG_PARTIAL");
+      if (hedge.leg) {
+        const executionPnl = this.estimateConservativeExecutionPnl({
+          plan,
+          quoteTokenDecimals: quoteToken.decimals,
+          baseTokenDecimals: baseToken.decimals,
+          buyQuote: buyLeg.quote,
+          sellQuote: hedge.leg.quote,
+          startedAt,
+        });
+        return {
+          success: false,
+          txHash: `${buyLeg.broadcast.txHash},${hedge.leg.broadcast.txHash}`,
+          status: "failed",
+          grossUsd: executionPnl.grossUsd,
+          feeUsd: executionPnl.feeUsd,
+          netUsd: executionPnl.netUsd,
+          error: `${partialMessage}; err=${String(error)}`,
+          errorType: "validation",
+          latencyMs: Date.now() - startedAt,
+        };
+      }
+
+      const buySpendUsd = toTokenUnits(buyLeg.quote.fromTokenAmount, quoteToken.decimals);
+      const buyFeeUsd =
+        Math.max(0, toNumber(buyLeg.quote.estimateGasFee, this.options.gasUsdDefault)) +
+        Math.max(0, toNumber(buyLeg.quote.tradeFee, plan.notionalUsd * 0.0006));
+      return {
+        success: false,
+        txHash: buyLeg.broadcast.txHash,
+        status: "failed",
+        grossUsd: -buySpendUsd,
+        feeUsd: buyFeeUsd,
+        netUsd: -buySpendUsd - buyFeeUsd,
+        error: `${partialMessage}; err=${String(error)}`,
+        errorType: "validation",
+        latencyMs: Date.now() - startedAt,
+      };
     }
 
-    const grossUsd = this.estimateGrossFromQuotes(
-      quoteToken.decimals,
-      buyLeg.quote,
-      sellLeg.quote,
-    );
-    const feeUsd = this.estimateFeeFromQuotes(plan.notionalUsd, buyLeg.quote, sellLeg.quote);
-    const netUsd = grossUsd - feeUsd;
+    const executionPnl = this.estimateConservativeExecutionPnl({
+      plan,
+      quoteTokenDecimals: quoteToken.decimals,
+      baseTokenDecimals: baseToken.decimals,
+      buyQuote: buyLeg.quote,
+      sellQuote: sellLeg.quote,
+      startedAt,
+    });
 
     return {
       success: true,
       txHash: `${buyLeg.broadcast.txHash},${sellLeg.broadcast.txHash}`,
       status: "confirmed",
-      grossUsd,
-      feeUsd,
-      netUsd,
+      grossUsd: executionPnl.grossUsd,
+      feeUsd: executionPnl.feeUsd,
+      netUsd: executionPnl.netUsd,
       latencyMs: Date.now() - startedAt,
     };
   }
@@ -602,7 +702,7 @@ export class OnchainOsClient {
       amount: input.amount,
       dexIds: input.dexId,
       userWalletAddress: input.userWalletAddress,
-      slippage: "0.5",
+      slippage: this.resolveSwapSlippage(),
     });
 
     if (this.options.requireSimulate) {
@@ -636,7 +736,16 @@ export class OnchainOsClient {
     amount: string;
     dexIds: string[];
     userWalletAddress: string;
-  }): Promise<string> {
+  }): Promise<
+    | {
+        leg: {
+          dexId: string;
+          quote: OnchainV6QuoteResponse;
+          broadcast: OnchainV6BroadcastResponse;
+        };
+      }
+    | { leg: null; error: string }
+  > {
     const dedupedDexes = Array.from(new Set(input.dexIds.filter(Boolean)));
     let lastError: unknown;
     for (const dexId of dedupedDexes) {
@@ -650,12 +759,18 @@ export class OnchainOsClient {
           userWalletAddress: input.userWalletAddress,
           leg: "hedge",
         });
-        return `submitted:${hedgeLeg.broadcast.txHash};dex=${dexId}`;
+        return {
+          leg: {
+            dexId,
+            quote: hedgeLeg.quote,
+            broadcast: hedgeLeg.broadcast,
+          },
+        };
       } catch (error) {
         lastError = error;
       }
     }
-    return `failed:${String(lastError)}`;
+    return { leg: null, error: String(lastError) };
   }
 
   private pickUserWalletAddress(plan: ExecutionPlan): string {
@@ -896,6 +1011,14 @@ export class OnchainOsClient {
     this.options.store?.insertAlert("info", "submit_channel", `submit channel=${channel}`);
   }
 
+  private resolveSwapSlippage(): string {
+    const configuredBps = this.options.slippageBps;
+    if (configuredBps === undefined || !Number.isFinite(configuredBps)) {
+      return "0.5";
+    }
+    return String(Math.max(0, configuredBps) / 100);
+  }
+
   private async fetchTokenProfile(symbol: string, chainIndex: string): Promise<{ address: string; decimals: number }> {
     if (!this.options.apiBase) {
       throw new OnchainApiError("token profile requires apiBase", 400, "API_BASE_REQUIRED");
@@ -991,6 +1114,102 @@ export class OnchainOsClient {
     const buyTradeFee = toNumber(buyQuote.tradeFee, notionalUsd * 0.0006);
     const sellTradeFee = toNumber(sellQuote.tradeFee, notionalUsd * 0.0006);
     return buyGas + sellGas + buyTradeFee + sellTradeFee;
+  }
+
+  private estimateConservativeExecutionPnl(input: {
+    plan: ExecutionPlan;
+    quoteTokenDecimals: number;
+    baseTokenDecimals: number;
+    buyQuote: OnchainV6QuoteResponse;
+    sellQuote: OnchainV6QuoteResponse;
+    startedAt: number;
+  }): { grossUsd: number; feeUsd: number; netUsd: number } {
+    const grossUsd = this.estimateGrossFromQuotes(
+      input.quoteTokenDecimals,
+      input.buyQuote,
+      input.sellQuote,
+    );
+    const quoteFeeUsd = this.estimateFeeFromQuotes(
+      input.plan.notionalUsd,
+      input.buyQuote,
+      input.sellQuote,
+    );
+    const costModelConfigured =
+      this.options.takerFeeBps !== undefined ||
+      this.options.mevPenaltyBps !== undefined ||
+      this.options.slippageBps !== undefined;
+    if (!costModelConfigured) {
+      return {
+        grossUsd,
+        feeUsd: quoteFeeUsd,
+        netUsd: grossUsd - quoteFeeUsd,
+      };
+    }
+    const metadata = input.plan.metadata ?? {};
+    const buyPrice = this.estimatePriceFromBuyQuote(
+      input.buyQuote,
+      input.quoteTokenDecimals,
+      input.baseTokenDecimals,
+    );
+    const sellPrice = this.estimatePriceFromSellQuote(
+      input.sellQuote,
+      input.quoteTokenDecimals,
+      input.baseTokenDecimals,
+    );
+    const grossEdgeBps = calculateGrossEdgeBps(buyPrice, sellPrice) ?? 0;
+    const safeSlippageBps = Math.max(0, this.options.slippageBps ?? 0);
+    const fallbackLiquidity =
+      this.options.liquidityUsdDefault ??
+      Math.max(1000, (input.plan.notionalUsd * 10_000) / Math.max(1, safeSlippageBps || 12));
+    const avgLatencyMs = Math.max(
+      0,
+      Date.now() - input.startedAt,
+      asFiniteNumber(metadata.avgLatencyMs) ?? this.options.avgLatencyMsDefault ?? 0,
+    );
+    const modeledCostUsd = calculateCostBreakdown({
+      grossEdgeBps,
+      notionalUsd: input.plan.notionalUsd,
+      takerFeeBps: Math.max(0, this.options.takerFeeBps ?? 0),
+      mevPenaltyBps: Math.max(0, this.options.mevPenaltyBps ?? 0),
+      slippageBps: safeSlippageBps,
+      liquidityUsd: asFiniteNumber(metadata.liquidityUsd) ?? fallbackLiquidity,
+      volatility: asFiniteNumber(metadata.volatility) ?? this.options.volatilityDefault ?? 0,
+      avgLatencyMs,
+      gasBuyUsd: Math.max(
+        0,
+        toNumber(input.buyQuote.estimateGasFee, asFiniteNumber(metadata.gasBuyUsd) ?? this.options.gasUsdDefault),
+      ),
+      gasSellUsd: Math.max(
+        0,
+        toNumber(input.sellQuote.estimateGasFee, asFiniteNumber(metadata.gasSellUsd) ?? this.options.gasUsdDefault),
+      ),
+    }).totalCostUsd;
+    const feeUsd = Math.max(quoteFeeUsd, modeledCostUsd);
+    return {
+      grossUsd,
+      feeUsd,
+      netUsd: grossUsd - feeUsd,
+    };
+  }
+
+  private estimatePriceFromBuyQuote(
+    quote: OnchainV6QuoteResponse,
+    quoteTokenDecimals: number,
+    baseTokenDecimals: number,
+  ): number {
+    const spendQuote = toTokenUnits(quote.fromTokenAmount, quoteTokenDecimals);
+    const receiveBase = toTokenUnits(quote.toTokenAmount, baseTokenDecimals);
+    return spendQuote > 0 && receiveBase > 0 ? spendQuote / receiveBase : 0;
+  }
+
+  private estimatePriceFromSellQuote(
+    quote: OnchainV6QuoteResponse,
+    quoteTokenDecimals: number,
+    baseTokenDecimals: number,
+  ): number {
+    const spendBase = toTokenUnits(quote.fromTokenAmount, baseTokenDecimals);
+    const receiveQuote = toTokenUnits(quote.toTokenAmount, quoteTokenDecimals);
+    return spendBase > 0 && receiveQuote > 0 ? receiveQuote / spendBase : 0;
   }
 
   private pickPayload(raw: unknown): Record<string, unknown> {

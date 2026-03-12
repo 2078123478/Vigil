@@ -105,6 +105,59 @@ describe("OnchainOsClient v6 integration", () => {
     expect(client.getIntegrationStatus().lastFallbackAt).toBeTruthy();
   });
 
+  it("maps configured slippage bps into swap request slippage", async () => {
+    const mockFetch = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      const pathname = url.pathname;
+      const tokenSymbol = url.searchParams.get("tokenSymbol");
+      if (pathname.includes("/market/token/profile/current")) {
+        if (tokenSymbol === "USDC") {
+          return jsonResponse({ data: [{ tokenContractAddress: "0xusdc", tokenDecimal: "6" }] });
+        }
+        return jsonResponse({ data: [{ tokenContractAddress: "0xeth", tokenDecimal: "18" }] });
+      }
+      if (pathname.includes("/aggregator/quote")) {
+        return jsonResponse({ data: [{ fromTokenAmount: "1000000", toTokenAmount: "500000000000000", dexRouterList: [{ dexName: "dex-a" }] }] });
+      }
+      if (pathname.includes("/aggregator/swap")) {
+        return jsonResponse({ data: [{ txData: "0xabc", to: "0xrouter", value: "0" }] });
+      }
+      if (pathname.includes("/pre-transaction/simulate")) {
+        return jsonResponse({ data: [{ success: true }] });
+      }
+      return jsonResponse({ code: "404" }, 404);
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const client = new OnchainOsClient({
+      apiBase: "http://localhost:9999",
+      apiKey: "k1",
+      authMode: "bearer",
+      apiKeyHeader: "X-API-Key",
+      gasUsdDefault: 1,
+      chainIndex: "196",
+      requireSimulate: true,
+      enableCompatFallback: false,
+      tokenCacheTtlSeconds: 600,
+      tokenProfilePath: "/api/v6/market/token/profile/current",
+      slippageBps: 12,
+    });
+
+    await client.probeConnection({
+      pair: "ETH/USDC",
+      chainIndex: "196",
+      notionalUsd: 25,
+      userWalletAddress: "0x1111111111111111111111111111111111111111",
+    });
+
+    const swapCall = (mockFetch.mock.calls as Array<[URL | RequestInfo]>).find(([value]) =>
+      new URL(String(value)).pathname.includes("/aggregator/swap"),
+    );
+    expect(swapCall).toBeTruthy();
+    const url = new URL(String(swapCall?.[0]));
+    expect(url.searchParams.get("slippage")).toBe("0.12");
+  });
+
   it("resolves token with cache hit and stale-cache fallback", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alphaos-token-"));
     tempDirs.push(tempDir);
@@ -346,6 +399,177 @@ describe("OnchainOsClient v6 integration", () => {
     expect(result.latencyMs).toBeTypeOf("number");
   });
 
+  it("builds bid/ask from real buy and sell quotes on the same dex", async () => {
+    const mockFetch = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      const pathname = url.pathname;
+      const from = url.searchParams.get("fromTokenAddress");
+      const to = url.searchParams.get("toTokenAddress");
+      const dexIds = url.searchParams.get("dexIds");
+      const tokenSymbol = url.searchParams.get("tokenSymbol");
+
+      if (pathname.includes("/market/token/profile/current")) {
+        if (tokenSymbol === "USDC") {
+          return jsonResponse({ data: [{ tokenContractAddress: "0xusdc", tokenDecimal: "6" }] });
+        }
+        return jsonResponse({ data: [{ tokenContractAddress: "0xeth", tokenDecimal: "18" }] });
+      }
+      if (pathname.includes("/aggregator/quote")) {
+        if (dexIds === "dex-a" && from === "0xusdc" && to === "0xeth") {
+          return jsonResponse({
+            data: [{ fromTokenAmount: "100000000", toTokenAmount: "50000000000000000", estimateGasFee: "1.2" }],
+          });
+        }
+        if (dexIds === "dex-a" && from === "0xeth" && to === "0xusdc") {
+          return jsonResponse({
+            data: [{ fromTokenAmount: "50000000000000000", toTokenAmount: "99500000", estimateGasFee: "1.4" }],
+          });
+        }
+        if (dexIds === "dex-b" && from === "0xusdc" && to === "0xeth") {
+          return jsonResponse({
+            data: [{ fromTokenAmount: "100000000", toTokenAmount: "49019607843137250", estimateGasFee: "0.9" }],
+          });
+        }
+        return jsonResponse({
+          data: [{ fromTokenAmount: "49019607843137250", toTokenAmount: "100500000", estimateGasFee: "1.1" }],
+        });
+      }
+      return jsonResponse({ code: "404" }, 404);
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const client = new OnchainOsClient({
+      apiBase: "http://localhost:9999",
+      apiKey: "k1",
+      authMode: "bearer",
+      apiKeyHeader: "X-API-Key",
+      gasUsdDefault: 1,
+      chainIndex: "196",
+      requireSimulate: true,
+      enableCompatFallback: false,
+      tokenCacheTtlSeconds: 600,
+      tokenProfilePath: "/api/v6/market/token/profile/current",
+    });
+
+    const quotes = await client.getQuotes("ETH/USDC", ["dex-a", "dex-b"]);
+    const dexA = quotes.find((quote) => quote.dex === "dex-a");
+    const dexB = quotes.find((quote) => quote.dex === "dex-b");
+
+    expect(dexA?.ask).toBeCloseTo(2000, 6);
+    expect(dexA?.bid).toBeCloseTo(1990, 6);
+    expect(dexA?.gasUsd).toBe(1.4);
+    expect(dexB?.ask).toBeCloseTo(2040, 6);
+    expect(dexB?.bid).toBeCloseTo(2050.2, 6);
+  });
+
+  it("uses conservative live pnl accounting when cost model inputs are configured", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alphaos-live-pnl-"));
+    tempDirs.push(tempDir);
+    const store = new StateStore(tempDir);
+    stores.push(store);
+
+    const mockFetch = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const pathname = url.pathname;
+      const from = url.searchParams.get("fromTokenAddress");
+      const to = url.searchParams.get("toTokenAddress");
+      const tokenSymbol = url.searchParams.get("tokenSymbol");
+
+      if (pathname.includes("/market/token/profile/current")) {
+        if (tokenSymbol === "USDC") {
+          return jsonResponse({ data: [{ tokenContractAddress: "0xusdc", tokenDecimal: "6" }] });
+        }
+        return jsonResponse({ data: [{ tokenContractAddress: "0xeth", tokenDecimal: "18" }] });
+      }
+      if (pathname.includes("/aggregator/quote")) {
+        if (from === "0xusdc" && to === "0xeth") {
+          return jsonResponse({
+            data: [
+              {
+                fromTokenAmount: "100000000",
+                toTokenAmount: "50000000000000000",
+                estimateGasFee: "0",
+                tradeFee: "0",
+                dexRouterList: [{ dexName: "dex-a" }],
+              },
+            ],
+          });
+        }
+        return jsonResponse({
+          data: [
+            {
+              fromTokenAmount: "50000000000000000",
+              toTokenAmount: "101000000",
+              estimateGasFee: "0",
+              tradeFee: "0",
+              dexRouterList: [{ dexName: "dex-b" }],
+            },
+          ],
+        });
+      }
+      if (pathname.includes("/aggregator/swap")) {
+        if (from === "0xusdc" && to === "0xeth") {
+          return jsonResponse({ data: [{ txData: "0xbuy", to: "0xrouter-a", value: "0" }] });
+        }
+        return jsonResponse({ data: [{ txData: "0xsell", to: "0xrouter-b", value: "0" }] });
+      }
+      if (pathname.includes("/pre-transaction/simulate")) {
+        return jsonResponse({ data: [{ success: true }] });
+      }
+      if (pathname.includes("/broadcast-transaction")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { bundleTxs?: Array<{ txData?: string }> };
+        expect(body.bundleTxs?.length).toBe(2);
+        return jsonResponse({ data: [{ txHash: "0xatomic-pnl" }] });
+      }
+      if (pathname.includes("/aggregator/history")) {
+        return jsonResponse({ data: [{ status: "confirmed" }] });
+      }
+      return jsonResponse({ code: "404" }, 404);
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const client = new OnchainOsClient({
+      apiBase: "http://localhost:9999",
+      apiKey: "k1",
+      authMode: "bearer",
+      apiKeyHeader: "X-API-Key",
+      gasUsdDefault: 0,
+      chainIndex: "196",
+      requireSimulate: true,
+      enableCompatFallback: false,
+      tokenCacheTtlSeconds: 600,
+      tokenProfilePath: "/api/v6/market/token/profile/current",
+      store,
+      takerFeeBps: 20,
+      mevPenaltyBps: 5,
+      slippageBps: 12,
+      liquidityUsdDefault: 1_000_000,
+      volatilityDefault: 0,
+      avgLatencyMsDefault: 100,
+    });
+
+    const result = await client.executePlan({
+      opportunityId: "opp-live-pnl",
+      strategyId: "dex-arbitrage",
+      pair: "ETH/USDC",
+      buyDex: "dex-a",
+      sellDex: "dex-b",
+      buyPrice: 100,
+      sellPrice: 101,
+      notionalUsd: 100,
+      metadata: {
+        liquidityUsd: 1_000_000,
+        volatility: 0,
+        avgLatencyMs: 100,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.grossUsd).toBeCloseTo(1, 6);
+    expect(result.feeUsd).toBeGreaterThan(0.4);
+    expect(result.netUsd).toBeLessThan(result.grossUsd);
+  });
+
   it("fails when quote route does not match constrained dex", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alphaos-route-"));
     tempDirs.push(tempDir);
@@ -418,14 +642,23 @@ describe("OnchainOsClient v6 integration", () => {
       }
       if (url.pathname.includes("/aggregator/quote")) {
         const dexIds = String(url.searchParams.get("dexIds") ?? "");
-        quoteStartedAt[dexIds] = Date.now();
+        if (!(dexIds in quoteStartedAt)) {
+          quoteStartedAt[dexIds] = Date.now();
+        }
         if (dexIds === "dex-a") {
           await new Promise((resolve) => setTimeout(resolve, 80));
         } else {
           await new Promise((resolve) => setTimeout(resolve, 5));
         }
+        const from = url.searchParams.get("fromTokenAddress");
+        const to = url.searchParams.get("toTokenAddress");
+        if (from === "0xusdc" && to === "0xeth") {
+          return jsonResponse({
+            data: [{ fromTokenAmount: "100000000", toTokenAmount: "50000000000000000", dexRouterList: [{ dexName: dexIds }] }],
+          });
+        }
         return jsonResponse({
-          data: [{ fromTokenAmount: "100000000", toTokenAmount: "50000000000000000", dexRouterList: [{ dexName: dexIds }] }],
+          data: [{ fromTokenAmount: "50000000000000000", toTokenAmount: "100000000", dexRouterList: [{ dexName: dexIds }] }],
         });
       }
       return jsonResponse({ code: "404" }, 404);
@@ -590,6 +823,8 @@ describe("OnchainOsClient v6 integration", () => {
     const alerts = store.listAlerts(5);
     expect(result.success).toBe(false);
     expect(result.errorType).toBe("validation");
+    expect(result.netUsd).toBeLessThan(0);
+    expect(result.txHash).toContain("0xhedge-");
     expect(alerts.some((alert) => alert.eventType === "atomic_dual_leg_fallback")).toBe(true);
     expect(alerts.some((alert) => alert.eventType === "dual_leg_partial_fill")).toBe(true);
     expect(alerts.some((alert) => alert.message.includes("hedge=submitted"))).toBe(true);

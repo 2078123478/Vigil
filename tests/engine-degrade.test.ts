@@ -510,4 +510,126 @@ describe("AlphaEngine degraded-to-paper", () => {
     store.close();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
+
+  it("triggers circuit breaker on successful trades that breach daily loss", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "alphaos-engine-loss-break-"));
+    const store = new StateStore(tempDir);
+    store.insertSimulation({
+      opportunityId: "seed-live-pass",
+      mode: "paper",
+      inputJson: JSON.stringify({ seeded: true }),
+      resultJson: JSON.stringify({ netUsd: 25, pass: true }),
+      createdAt: new Date().toISOString(),
+    });
+
+    let scanned = false;
+    const plugin: StrategyPlugin = {
+      id: "dex-arbitrage",
+      version: "1.0.0",
+      async scan() {
+        if (scanned) {
+          return [];
+        }
+        scanned = true;
+        return [
+          {
+            id: "opp-loss-break",
+            strategyId: "dex-arbitrage",
+            pair: "ETH/USDC",
+            buyDex: "a",
+            sellDex: "b",
+            buyPrice: 100,
+            sellPrice: 102,
+            grossEdgeBps: 200,
+            detectedAt: new Date().toISOString(),
+          },
+        ];
+      },
+      async evaluate(opportunity) {
+        return { accepted: true, reason: "ok", opportunity };
+      },
+      async plan(input) {
+        return {
+          opportunityId: input.opportunity.id,
+          strategyId: "dex-arbitrage",
+          pair: input.opportunity.pair,
+          buyDex: input.opportunity.buyDex,
+          sellDex: input.opportunity.sellDex,
+          buyPrice: input.opportunity.buyPrice,
+          sellPrice: input.opportunity.sellPrice,
+          notionalUsd: 100,
+        };
+      },
+    };
+
+    const marketWatch = {
+      async fetch() {
+        return [
+          { pair: "ETH/USDC", dex: "a", bid: 99.8, ask: 100, gasUsd: 0, ts: new Date().toISOString() },
+          { pair: "ETH/USDC", dex: "b", bid: 102, ask: 102.2, gasUsd: 0, ts: new Date().toISOString() },
+        ];
+      },
+    };
+
+    const engine = new AlphaEngine(
+      {
+        id: "alphaos",
+        version: "0.3.0",
+        description: "test",
+        strategyIds: ["dex-arbitrage"],
+      },
+      [plugin],
+      {
+        intervalMs: 20,
+        pair: "ETH/USDC",
+        dexes: ["a", "b"],
+        startMode: "live",
+        liveEnabled: true,
+        autoPromoteToLive: false,
+        paperStartingBalanceUsd: 1000,
+        liveBalanceUsd: 1000,
+        riskPolicy: {
+          minNetEdgeBpsPaper: 1,
+          minNetEdgeBpsLive: 1,
+          maxTradePctBalance: 1,
+          maxDailyLossPct: 0.01,
+          maxConsecutiveFailures: 3,
+        },
+      },
+      { info() {}, error() {} } as never,
+      marketWatch as never,
+      new Simulator({ slippageBps: 0, takerFeeBps: 0, gasUsdDefault: 0 }),
+      new RiskEngine({
+        minNetEdgeBpsPaper: 1,
+        minNetEdgeBpsLive: 1,
+        maxTradePctBalance: 1,
+        maxDailyLossPct: 0.01,
+        maxConsecutiveFailures: 3,
+      }),
+      store,
+      { async publish() {}, async flushOutbox() {} } as never,
+      {
+        async execute() {
+          return {
+            success: true,
+            txHash: "live-loss-tx",
+            status: "confirmed" as const,
+            grossUsd: 5,
+            feeUsd: 30,
+            netUsd: -25,
+          };
+        },
+      } as never,
+    );
+
+    engine.start();
+    await sleep(120);
+    engine.stop();
+
+    expect(engine.getCurrentMode()).toBe("paper");
+    expect(store.listAlerts(10).some((alert) => alert.eventType === "circuit_breaker")).toBe(true);
+
+    store.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
 });

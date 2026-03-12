@@ -100,6 +100,12 @@ export function createAlphaOsSkill(config: AlphaOsConfig, logger: Logger) {
     usePrivateSubmit: config.onchainUsePrivateSubmit,
     quoteStaleMs: config.quoteStaleMs,
     store,
+    takerFeeBps: config.takerFeeBps,
+    mevPenaltyBps: config.mevPenaltyBps,
+    slippageBps: config.slippageBps,
+    liquidityUsdDefault: config.liquidityUsdDefault,
+    volatilityDefault: config.volatilityDefault,
+    avgLatencyMsDefault: config.avgLatencyMsDefault,
   });
 
   const market = new MarketWatch(onchain, store, {

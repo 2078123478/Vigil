@@ -715,6 +715,7 @@ export class AlphaEngine {
         txHash: trade.txHash,
         strategyId,
       });
+      await this.maybeTriggerCircuitBreaker(strategyId, opportunity, effectiveMode);
       return { tradeId };
     }
 
