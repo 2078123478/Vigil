@@ -1,21 +1,107 @@
-# AlphaOS
+# Personal Butler
 
-A skill-oriented autonomous agent framework built on the [OnchainOS](https://www.okx.com/zh-hans/web3/build/docs/waas/onchainos-overview) ecosystem. The core primitive is **Agent-Comm** — a contact-first, blockchain-native messaging protocol that gives every agent a wallet-based identity, consent-gated connections, and end-to-end encrypted on-chain communication.
+Personal Butler is a skill-oriented autonomous agent framework for building private, wallet-native, chain-aware AI assistants.
 
-Built for X Layer. Runs on any EVM chain.
+It combines three layers in one project:
 
-## Agent-Comm — Core Protocol
+- **Agent identity & communication** — agents own wallets, exchange signed contact cards, and communicate through consent-gated encrypted messages.
+- **Composable skill runtime** — capabilities are organized as skills with clear boundaries and reusable infrastructure.
+- **On-chain execution workflows** — market discovery, strategy evaluation, simulation, and execution can be connected into a production-style loop.
 
-Agents need their own communication layer — with identity, trust, privacy, and on-chain verifiability. Agent-Comm is that layer.
+**Positioning:** built to evolve toward **BNB Chain-friendly agent infrastructure**, while preserving the full working codebase and battle-tested flows from the original project baseline.
 
-- **Wallet = Identity** — Every agent holds a secp256k1 keypair. EIP-712 signed contact cards prove identity without infrastructure.
-- **Consent-gated trust** — Importing a card doesn't auto-connect. The peer requests; you approve or reject. No spam.
-- **Encrypted inscription transport** — Messages are encrypted (ECDH + AES-256-GCM) and written into transaction calldata on-chain. No servers, no brokers, no contracts to deploy.
-- **Chain-agnostic** — Works on any EVM chain. First deployed on X Layer (Chain 196).
+> Transitional note: some internal module names still reference **AlphaOS** or **OnchainOS**. This repository keeps the current implementation intact first, then refactors naming and chain defaults in later phases.
+
+---
+
+## Why this repo exists
+
+This repository is the next-stage evolution of the original submitted project.
+
+The goal is **not** to discard the existing work. The goal is to keep the full system, preserve the proven architecture, and rebuild the project narrative so people can understand the value in seconds:
+
+- a **private AI agent** should have its own identity
+- an agent should be able to **form trusted connections** with other agents
+- agent communication should be **verifiable, encrypted, and chain-aware**
+- useful agents need a **real execution layer**, not just chat
+
+That is the core idea behind **Personal Butler**.
+
+---
+
+## Core Capabilities
+
+### 1. Agent-Comm — wallet-native agent communication
+
+Agent-Comm is the protocol core of this repository.
+
+- **Wallet = identity**
+- **Signed contact cards** for portable introductions
+- **Consent-gated trust** before business commands are accepted
+- **ECDH + AES-256-GCM** encrypted payloads
+- **On-chain transport** through calldata inscriptions
+- **Chain-agnostic design** for EVM environments
 
 ![Agent-Comm Contact Card](docs/assets/agent-comm-card-preview.png)
 
-### Quick Start
+### 2. Skill-oriented architecture
+
+Capabilities are organized as composable skills:
+
+```text
+skills/
+├── agent-comm/    # identity, contacts, encrypted agent messaging
+├── alphaos/       # strategy/execution engine (current implementation name)
+└── discovery/     # opportunity scanning and candidate generation
+```
+
+Skills share runtime primitives such as:
+
+- SQLite state storage
+- encrypted vault storage
+- config and profile management
+- CLI + API entrypoints
+- operator-facing documentation
+
+### 3. Execution-ready workflow
+
+The project already contains a full execution loop:
+
+```text
+scan → evaluate → plan → simulate → execute → record → notify
+```
+
+Current implementation highlights:
+
+- paper/live execution modes
+- pluggable discovery strategies
+- execution probes and health checks
+- structured trade recording
+- live metrics / demo surface
+
+---
+
+## Why it matters for BNB Chain
+
+The strategic direction of Personal Butler is to become a stronger fit for **BNB Chain agent infrastructure**:
+
+- agents need portable identity, not platform-locked accounts
+- multi-agent coordination needs trust and explicit consent
+- useful on-chain agents need execution, observability, and operational tooling
+- EVM compatibility makes the protocol and runtime portable
+
+Today, the repository still preserves the original implementation baseline and existing execution integration. The next iterations will progressively shift:
+
+- external branding
+- documentation and examples
+- default network positioning
+- BNB Chain-oriented demos and narratives
+
+---
+
+## Quick Start
+
+### Agent identity + communication
 
 ```bash
 # Initialize agent identity
@@ -30,120 +116,82 @@ npx tsx src/index.ts agent-comm:card:import ./peer-card.json
 # Request connection → peer approves → mutual trust
 VAULT_MASTER_PASSWORD=pass123 npx tsx src/index.ts agent-comm:connect:invite <contactId>
 
-# Send encrypted command to trusted peer
+# Send encrypted command to a trusted peer
 VAULT_MASTER_PASSWORD=pass123 npx tsx src/index.ts agent-comm:send ping contact:<contactId> --echo hello
 ```
 
-### Connection Flow
+### Run the current execution stack
 
-```
-Export card → Peer imports → Peer sends invite → You approve → Mutual trust → Encrypted messaging
+```bash
+cp .env.example .env
+npm install
+npm run dev
 ```
 
-### Supported Commands
+Demo scripts:
+
+```bash
+npm run demo:run            # full arbitrage cycle demo
+npm run demo:discovery      # discovery engine demo
+npm run demo:smoke:live     # current live-integration smoke test
+```
+
+---
+
+## Current Command Surface
+
+### Agent-Comm commands
 
 | Command | Purpose |
 |---------|---------|
 | `ping` | Liveness check |
-| `probe_onchainos` | Query peer's OnchainOS execution readiness |
+| `probe_onchainos` | Query peer execution readiness (current command name) |
 | `start_discovery` | Request opportunity scanning |
 | `request_mode_change` | Request paper↔live switch |
 
-Full CLI reference: `npx tsx src/index.ts agent-comm:help`
+Full CLI reference:
 
-### Documentation
-
-- [One Pager](docs/AGENT_COMM_ONE_PAGER.md) — Human-friendly overview
-- [Protocol Design](docs/AGENT_COMM_V2_DESIGN.md) — Full v2 specification
-- [Artifact Contracts](docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md) — EIP-712 typed-data definitions
-- [Card Packaging](docs/AGENT_COMM_V2_CARD_PACKAGING.md) — Share URL + HTML card spec
-- [Operations Runbook](docs/AGENT_COMM_V2_OPERATIONS.md) — Deployment and operations
-- [Production Guide](docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md) — Battle-tested deployment steps
-- [Privacy Analysis](docs/AGENT_COMM_PRIVACY_AND_TRUST_ANALYSIS.md) — Trust model and privacy boundaries
+```bash
+npx tsx src/index.ts agent-comm:help
+```
 
 ---
 
-## Skill Architecture
+## Project Structure
 
-AlphaOS organizes capabilities as composable skills. Each skill has a self-contained definition (`SKILL.md`) with triggers, operations, and extension points.
-
-```
+```text
+src/
+├── index.ts                    # CLI entrypoint
+├── skills/
+│   ├── alphaos/                # current execution engine modules
+│   └── ...
 skills/
-├── agent-comm/    # P2P identity, contact cards, encrypted messaging
-├── alphaos/       # DEX arbitrage engine (scan → evaluate → execute → record)
-└── discovery/     # Multi-strategy opportunity scanning
-```
+├── agent-comm/                 # protocol skill definition
+├── alphaos/                    # execution/runtime skill definition
+└── discovery/                  # discovery skill definition
 
-Skills share runtime infrastructure (SQLite state store, vault, config) but maintain clear boundaries. See each `skills/*/SKILL.md` for details.
-
----
-
-## Arbitrage Engine (alphaos skill)
-
-A plugin-based DEX arbitrage engine that leverages OnchainOS v6 execution infrastructure for on-chain trading.
-
-**Core flow:** `scan → evaluate → plan → simulate → execute → record → notify`
-
-Paper trading on X Layer (Chain 196), March 4–10, 2026:
-
-- **305 trades**, **100% win rate**, **$895.94 net profit**
-- 1,661 opportunities scanned across DEX pairs
-
-![AlphaOS Performance](docs/assets/pnl-performance.png)
-
-### Execution Modes
-
-| Mode | Behavior |
-|------|----------|
-| `paper` | Virtual execution, full PnL tracking |
-| `live` | Real execution via OnchainOS v6 (quote → swap → simulate → broadcast) |
-
-Live promotion requires 24h paper track record: net profit > 0, win rate ≥ 55%, zero permission failures.
-
-### OnchainOS Integration
-
-AlphaOS integrates with [OnchainOS](https://www.okx.com/zh-hans/web3/build/docs/waas/onchainos-overview) as its execution infrastructure layer:
-
-- Official v6 execution flow: `quote → swap → simulate → broadcast → history`
-- Token resolution and chain indexing via OnchainOS API
-- Execution readiness probing: `POST /api/v1/integration/onchainos/probe`
-- Auth modes: `bearer`, `api-key`, `hmac`
-
-### Run
-
-```bash
-cp .env.example .env
-# Configure OnchainOS credentials and network profile
-npm install && npm run dev
-```
-
-Demo scripts:
-```bash
-npm run demo:run            # Full arbitrage cycle
-npm run demo:discovery      # Discovery engine demo
-npm run demo:smoke:live     # OnchainOS v6 integration smoke test
+docs/                           # protocol, operations, design, and migration docs
 ```
 
 ---
 
-## Discovery Engine (discovery skill)
+## Documentation
 
-Time-bounded market scanning sessions with three pluggable strategies:
+Start here:
 
-| Strategy | Signal |
-|----------|--------|
-| `spread-threshold` | Static spread threshold |
-| `mean-reversion` | Z-score deviation from rolling mean |
-| `volatility-breakout` | Volatility ratio exceeds baseline |
-
-Can be triggered locally via API or remotely via Agent-Comm (`start_discovery` command).
+- [Documentation Index](docs/README.md)
+- [Agent-Comm One Pager](docs/AGENT_COMM_ONE_PAGER.md)
+- [Agent-Comm V2 Design](docs/AGENT_COMM_V2_DESIGN.md)
+- [Production Deployment Guide](docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
+- [AlphaOS Operations Guide](docs/ALPHAOS_OPERATIONS.md)
 
 ---
 
 ## API Overview
 
 ### Agent-Comm
-```
+
+```text
 GET  /api/v1/agent-comm/status
 GET  /api/v1/agent-comm/contacts
 GET  /api/v1/agent-comm/messages
@@ -157,7 +205,8 @@ POST /api/v1/agent-comm/send/start-discovery
 ```
 
 ### Engine
-```
+
+```text
 GET  /api/v1/metrics/today
 POST /api/v1/engine/mode
 GET  /api/v1/opportunities
@@ -166,14 +215,16 @@ GET  /api/v1/strategies/status
 ```
 
 ### Discovery
-```
+
+```text
 POST /api/v1/discovery/sessions/start
 GET  /api/v1/discovery/sessions/:id/report
 POST /api/v1/discovery/sessions/:id/approve
 ```
 
 ### Growth & Observability
-```
+
+```text
 GET  /api/v1/growth/share/latest
 GET  /api/v1/growth/moments
 GET  /api/v1/stream/metrics          (SSE)
@@ -184,20 +235,25 @@ GET  /demo                           (live dashboard)
 
 ---
 
-## Network Profiles
+## What stays the same in this phase
 
-| Profile | Chain | Config |
-|---------|-------|--------|
-| `xlayer-recommended` | X Layer (196) | Auto RPC, poll listener, HMAC auth |
-| `evm-custom` | Any EVM chain | Manual RPC, listener, auth config |
+This phase is intentionally conservative.
+
+We are **not** yet doing a risky full rename of:
+
+- internal class names
+- API path names
+- command names
+- skill folder names
+
+That comes later. This phase focuses on:
+
+- repository positioning
+- top-level story
+- first-impression clarity
+- migration direction
 
 ---
-
-## Storage
-
-- Business state: `data/alpha.db` (SQLite)
-- Secrets: `data/vault.db` (AES-256-GCM + PBKDF2)
-- Both excluded from git via `.gitignore`
 
 ## License
 
