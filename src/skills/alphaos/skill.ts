@@ -77,7 +77,7 @@ export function createAlphaOsSkill(config: AlphaOsConfig, logger: Logger) {
   const manifest: SkillManifest = {
     id: "alphaos",
     version: "0.2.0",
-    description: "Plugin-first autonomous alpha skill for OnchainOS runtime",
+    description: "Plugin-first autonomous execution skill for the Personal Butler runtime",
     strategyIds: plugins.map((plugin) => plugin.id),
   };
 

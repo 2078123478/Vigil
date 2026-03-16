@@ -1,8 +1,8 @@
-# AlphaOS Architecture
+# Personal Butler Execution Architecture
 
 ## Skill Ecosystem
 
-AlphaOS is composed of three cooperating skills:
+Personal Butler currently ships with three cooperating skills:
 
 | Skill | Responsibility | Code Path |
 |-------|---------------|-----------|
@@ -24,7 +24,7 @@ AlphaOS is composed of three cooperating skills:
 ### Runtime Services
 - `runtime/state-store.ts` — SQLite persistence (trades, opportunities, strategies, profiles, contacts, messages, outbox)
 - `runtime/vault.ts` — AES-256 secret storage
-- `runtime/onchainos-client.ts` — OnchainOS v6 adapter with bearer/api-key/hmac auth, token resolution cache
+- `runtime/onchainos-client.ts` — current execution-backend adapter with bearer/api-key/hmac auth and token resolution cache
 - `runtime/risk-engine.ts` — risk policy enforcement
 - `runtime/simulator.ts` — pre-execution simulation
 - `runtime/cost-model.ts` — fee/slippage/MEV/gas cost estimation
@@ -44,10 +44,10 @@ AlphaOS is composed of three cooperating skills:
 ## Data Flow
 
 ```
-                    ┌──────────────┐
-                    │ OnchainOS v6 │
-                    │  (external)  │
-                    └──────┬───────┘
+                    ┌────────────────────────┐
+                    │ Current Exec Backend   │
+                    │     (external)         │
+                    └──────────┬─────────────┘
                            │ quote/swap/simulate/broadcast
                            ▼
 ┌─────────┐    tick    ┌────────────┐    record    ┌────────────┐

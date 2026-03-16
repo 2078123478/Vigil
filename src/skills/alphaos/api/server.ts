@@ -1205,7 +1205,7 @@ function demoHtml(): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AlphaOS Live Demo</title>
+  <title>Personal Butler Live Demo</title>
   <style>
     :root {
       --bg: radial-gradient(circle at 10% 20%, #0f172a 0%, #111827 38%, #041022 100%);
@@ -1257,7 +1257,7 @@ function demoHtml(): string {
   </style>
 </head>
 <body>
-  <h1>AlphaOS Championship Console</h1>
+  <h1>Personal Butler Execution Console</h1>
   <div class="grid">
     <div class="card"><h2>Today Net PnL</h2><div id="net" class="kpi">0.00</div></div>
     <div class="card"><h2>Trades</h2><div id="trades" class="kpi">0</div></div>
@@ -1284,7 +1284,7 @@ function demoHtml(): string {
       <pre id="moments">No growth moments yet</pre>
     </div>
     <div class="card">
-      <h2>OnchainOS v6 Probe</h2>
+      <h2>Execution Backend Probe</h2>
       <pre id="probe">Probe pending...</pre>
     </div>
     <div class="card feed">

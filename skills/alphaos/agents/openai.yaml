@@ -1,4 +1,4 @@
 version: 1
-display_name: AlphaOS Skill
-short_description: Plugin-based OnchainOS arbitrage skill runtime
-default_prompt: Build or extend AlphaOS multi-strategy plugins, risk controls, SQLite tracking, vault security, whale-signal ingestion, and OpenClaw hook notifications.
+display_name: Personal Butler Execution Skill
+short_description: Plugin-based execution skill runtime with current OnchainOS-compatible integration
+default_prompt: Build or extend Personal Butler execution plugins, risk controls, SQLite tracking, vault security, signal ingestion, and OpenClaw hook notifications while preserving current runtime behavior.
