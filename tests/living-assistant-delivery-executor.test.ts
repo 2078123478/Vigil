@@ -46,6 +46,16 @@ function buildAudio(): TTSResult {
   };
 }
 
+function buildAudioUrlOnly(): TTSResult {
+  return {
+    audioUrl: "https://cdn.example.com/brief.wav",
+    format: "wav",
+    durationSeconds: 0,
+    provider: "mock-tts",
+    generatedAt: "2026-03-17T09:01:30.000Z",
+  };
+}
+
 function buildSender() {
   const sendVoice = vi.fn().mockResolvedValue({
     ok: true,
@@ -206,6 +216,35 @@ describe("living assistant delivery executor", () => {
     expect(result.sent).toBe(true);
     expect(result.dryRun).toBe(false);
     expect(result.orchestratorResults).toHaveLength(2);
+  });
+
+  it("forwards audioUrl-only payloads to voice orchestrator", async () => {
+    const brief = buildBrief();
+    const deliver = vi.fn().mockResolvedValue([
+      {
+        channel: "twilio",
+        ok: true,
+        detail: {
+          ok: true,
+          callSid: "CAURL",
+        },
+      },
+    ]);
+    const voiceOrchestrator = {
+      deliver,
+    } as unknown as VoiceDeliveryOrchestrator;
+
+    const result = await executeDelivery(buildDecision("call_escalation"), brief, buildAudioUrlOnly(), {
+      voiceOrchestrator,
+    });
+
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledWith("call_escalation", {
+      text: brief.text,
+      audioUrl: "https://cdn.example.com/brief.wav",
+    });
+    expect(result.sent).toBe(true);
+    expect(result.channel).toBe("twilio");
   });
 
   it("forwards voice orchestrator demo options when configured", async () => {

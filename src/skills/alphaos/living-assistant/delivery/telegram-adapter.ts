@@ -42,7 +42,7 @@ function withAudioPayload(audio: TTSResult | undefined): Pick<
   TelegramDeliveryPayload,
   "audioBase64" | "audioFormat" | "audioDurationSeconds"
 > {
-  if (!audio) {
+  if (!audio?.audio || audio.audio.length === 0) {
     return {};
   }
 

@@ -1,4 +1,4 @@
-import type { TTSOptions, TTSProvider, TTSProviderConfig, TTSResult } from "./types";
+import type { OpenAICompatibleTTSProviderConfig, TTSOptions, TTSProvider, TTSResult } from "./types";
 
 const DEFAULT_MODEL = "tts-1";
 const DEFAULT_VOICE = "alloy";
@@ -28,7 +28,7 @@ export class OpenAICompatibleTTSProvider implements TTSProvider {
   private readonly defaultVoice: string;
   private readonly defaultFormat: string;
 
-  constructor(config: TTSProviderConfig) {
+  constructor(config: OpenAICompatibleTTSProviderConfig) {
     this.baseUrl = trimTrailingSlashes(config.baseUrl.trim());
     this.apiKey = config.apiKey.trim();
     this.model = config.model?.trim() || DEFAULT_MODEL;

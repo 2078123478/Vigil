@@ -424,6 +424,49 @@ describe("voice delivery channels", () => {
       expect(results.map((item) => item.channel)).toEqual(["twilio", "telegram"]);
     });
 
+    it("prefers Twilio callWithAudio when synthesized audioUrl exists", async () => {
+      const twilioAudioSpy = vi.spyOn(TwilioCallSender.prototype, "callWithAudio").mockResolvedValue({
+        ok: true,
+        callSid: "CA444",
+      });
+      const twilioTtsSpy = vi.spyOn(TwilioCallSender.prototype, "callWithTts").mockResolvedValue({
+        ok: true,
+        callSid: "CA445",
+      });
+      const telegramVoiceSpy = vi
+        .spyOn(TelegramVoiceSender.prototype, "sendVoice")
+        .mockResolvedValue({ ok: true, messageId: 16 });
+      const telegramTextSpy = vi
+        .spyOn(TelegramVoiceSender.prototype, "sendMessage")
+        .mockResolvedValue({ ok: true, messageId: 17 });
+
+      const orchestrator = new VoiceDeliveryOrchestrator({
+        telegram: {
+          botToken: "token",
+          defaultChatId: "chat-id",
+        },
+        twilio: {
+          accountSid: "AC111",
+          authToken: "token",
+          fromNumber: "+12025550100",
+          defaultToNumber: "+12025550200",
+        },
+      });
+
+      const results = await orchestrator.deliver("call_escalation", {
+        text: "escalation",
+        audioUrl: "https://cdn.example.com/brief.wav",
+      });
+
+      expect(twilioAudioSpy).toHaveBeenCalledTimes(1);
+      expect(twilioAudioSpy).toHaveBeenCalledWith("https://cdn.example.com/brief.wav");
+      expect(twilioTtsSpy).not.toHaveBeenCalled();
+      expect(telegramVoiceSpy).not.toHaveBeenCalled();
+      expect(telegramTextSpy).toHaveBeenCalledTimes(1);
+      expect(twilioAudioSpy.mock.invocationCallOrder[0]).toBeLessThan(telegramTextSpy.mock.invocationCallOrder[0]);
+      expect(results.map((item) => item.channel)).toEqual(["twilio", "telegram"]);
+    });
+
     it("demoMode returns successful results without sending", async () => {
       const telegramVoiceSpy = vi
         .spyOn(TelegramVoiceSender.prototype, "sendVoice")

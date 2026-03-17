@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DashScopeQwenTTSProvider } from "../src/skills/alphaos/living-assistant/tts/dashscope-qwen-provider";
 import { OpenAICompatibleTTSProvider } from "../src/skills/alphaos/living-assistant/tts/openai-compatible-provider";
 import { createTTSProvider } from "../src/skills/alphaos/living-assistant/tts/provider-factory";
 import type { TTSProviderConfig } from "../src/skills/alphaos/living-assistant/tts/types";
@@ -25,6 +26,18 @@ describe("living assistant tts", () => {
     expect(config.baseUrl).toContain("/v1");
   });
 
+  it("accepts a dashscope-qwen provider config", () => {
+    const config = {
+      type: "dashscope-qwen",
+      apiKey: "dash-test",
+      model: "qwen3-tts-flash",
+      defaultVoice: "Cherry",
+    } satisfies TTSProviderConfig;
+
+    expect(config.type).toBe("dashscope-qwen");
+    expect(config.model).toContain("qwen3-tts");
+  });
+
   it("createTTSProvider returns provider with expected name", () => {
     const provider = createTTSProvider({
       type: "openai-compatible",
@@ -34,6 +47,16 @@ describe("living assistant tts", () => {
 
     expect(provider).toBeInstanceOf(OpenAICompatibleTTSProvider);
     expect(provider.name).toBe("openai-compatible");
+  });
+
+  it("createTTSProvider supports dashscope-qwen type", () => {
+    const provider = createTTSProvider({
+      type: "dashscope-qwen",
+      apiKey: "dash-test",
+    });
+
+    expect(provider).toBeInstanceOf(DashScopeQwenTTSProvider);
+    expect(provider.name).toBe("dashscope-qwen");
   });
 
   it("openai-compatible provider constructs the correct request", async () => {
@@ -75,10 +98,72 @@ describe("living assistant tts", () => {
       speed: 1.15,
     });
 
-    expect(result.audio.byteLength).toBe(audioBytes.byteLength);
+    expect(result.audio).toBeDefined();
+    expect(result.audio?.byteLength).toBe(audioBytes.byteLength);
     expect(result.format).toBe("mp3");
     expect(result.durationSeconds).toBe(2);
     expect(result.provider).toBe("openai-compatible");
+  });
+
+  it("dashscope-qwen provider constructs request and returns audioUrl", async () => {
+    const mockFetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            output: {
+              audio: {
+                url: "https://cdn.example.com/qwen-voice.wav",
+              },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const provider = createTTSProvider({
+      type: "dashscope-qwen",
+      apiKey: "dash-key",
+      endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation/",
+      model: "qwen3-tts-instruct-flash",
+      defaultVoice: "Cherry",
+    });
+
+    const result = await provider.synthesize("Status update for you", {
+      language: "en",
+      instructions: "Speak in a concise and calm tone.",
+      optimizeInstructions: true,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [requestUrl, requestInit] = mockFetch.mock.calls[0];
+    expect(String(requestUrl)).toBe(
+      "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+    );
+    expect(requestInit?.method).toBe("POST");
+
+    const headers = requestInit?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer dash-key");
+    expect(headers["Content-Type"]).toBe("application/json");
+
+    expect(JSON.parse(String(requestInit?.body))).toEqual({
+      model: "qwen3-tts-instruct-flash",
+      input: {
+        text: "Status update for you",
+        voice: "Cherry",
+        language_type: "English",
+      },
+      parameters: {
+        instructions: "Speak in a concise and calm tone.",
+        optimize_instructions: true,
+      },
+    });
+
+    expect(result.audio).toBeUndefined();
+    expect(result.audioUrl).toBe("https://cdn.example.com/qwen-voice.wav");
+    expect(result.format).toBe("wav");
+    expect(result.durationSeconds).toBe(0);
+    expect(result.provider).toBe("dashscope-qwen");
   });
 
   it("provider surfaces HTTP errors with provider name and status", async () => {
@@ -99,6 +184,32 @@ describe("living assistant tts", () => {
     });
 
     await expect(provider.synthesize("hello world")).rejects.toThrow(/openai-compatible/i);
+    await expect(provider.synthesize("hello world")).rejects.toThrow(/401/);
+  });
+
+  it("dashscope-qwen provider surfaces HTTP errors with provider name and status", async () => {
+    const mockFetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: "InvalidApiKey",
+            message: "Access denied due to invalid key.",
+          }),
+          {
+            status: 401,
+            statusText: "Unauthorized",
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    );
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const provider = createTTSProvider({
+      type: "dashscope-qwen",
+      apiKey: "bad-key",
+    });
+
+    await expect(provider.synthesize("hello world")).rejects.toThrow(/dashscope-qwen/i);
     await expect(provider.synthesize("hello world")).rejects.toThrow(/401/);
   });
 });

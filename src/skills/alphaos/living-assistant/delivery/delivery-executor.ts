@@ -80,6 +80,14 @@ function toOrchestratorError(results: VoiceDeliveryResult[]): string | undefined
   return failures.join(" | ");
 }
 
+function hasAudioBytes(audio?: TTSResult): audio is TTSResult & { audio: Buffer } {
+  return Boolean(audio?.audio && audio.audio.length > 0);
+}
+
+function hasAudioUrl(audio?: TTSResult): audio is TTSResult & { audioUrl: string } {
+  return Boolean(audio?.audioUrl && audio.audioUrl.trim().length > 0);
+}
+
 export async function executeDelivery(
   decision: ContactDecision,
   brief?: VoiceBrief,
@@ -110,7 +118,8 @@ export async function executeDelivery(
     const briefText = brief?.text ?? decision.reason;
     const payload = {
       text: briefText,
-      ...(audio ? { audio: audio.audio, audioFormat: audio.format } : {}),
+      ...(hasAudioBytes(audio) ? { audio: audio.audio, audioFormat: audio.format } : {}),
+      ...(hasAudioUrl(audio) ? { audioUrl: audio.audioUrl } : {}),
     };
     const orchestratorOptions = config?.voiceOrchestratorOptions;
     const orchestratorResults = orchestratorOptions
@@ -156,7 +165,7 @@ export async function executeDelivery(
   }
 
   if (decision.attentionLevel === "voice_brief") {
-    if (audio) {
+    if (hasAudioBytes(audio)) {
       const voiceResult = await sender.sendVoice(audio.audio, { caption: briefText });
       return {
         channel: "telegram",
@@ -179,7 +188,7 @@ export async function executeDelivery(
 
   if (decision.attentionLevel === "strong_interrupt") {
     const followUpText = strongInterruptFollowUp(decision);
-    if (audio) {
+    if (hasAudioBytes(audio)) {
       const combined = await sender.sendVoiceWithFollowUp(audio.audio, briefText, followUpText);
       return {
         channel: "telegram",
@@ -209,7 +218,7 @@ export async function executeDelivery(
 
   const escalationText = escalationFollowUp(decision);
   const urgentCaption = `URGENT: ${briefText}`;
-  if (audio) {
+  if (hasAudioBytes(audio)) {
     const combined = await sender.sendVoiceWithFollowUp(audio.audio, urgentCaption, escalationText);
     return {
       channel: "telegram",

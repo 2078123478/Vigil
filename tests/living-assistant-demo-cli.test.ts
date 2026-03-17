@@ -36,6 +36,55 @@ describe("living assistant demo CLI", () => {
     });
   });
 
+  it("keeps openai-compatible TTS as default provider when TTS_PROVIDER is unset", () => {
+    const runtime = buildCallRuntime({
+      demoDelivery: true,
+      env: {
+        TTS_BASE_URL: "https://api.example.com/v1",
+        TTS_API_KEY: "sk-demo",
+      },
+    });
+
+    expect(runtime.ttsProvider?.name).toBe("openai-compatible");
+    expect(runtime.ttsOptions).toEqual({
+      format: "mp3",
+    });
+  });
+
+  it("supports explicit dashscope-qwen TTS provider in call runtime", () => {
+    const runtime = buildCallRuntime({
+      demoDelivery: true,
+      env: {
+        TTS_PROVIDER: "dashscope-qwen",
+        TTS_API_KEY: "dash-key",
+        TTS_MODEL: "qwen3-tts-instruct-flash",
+        TTS_VOICE: "Cherry",
+        TTS_INSTRUCTIONS: "Use a calm voice.",
+        TTS_OPTIMIZE_INSTRUCTIONS: "true",
+      },
+    });
+
+    expect(runtime.ttsProvider?.name).toBe("dashscope-qwen");
+    expect(runtime.ttsOptions).toEqual({
+      format: "wav",
+      voice: "Cherry",
+      instructions: "Use a calm voice.",
+      optimizeInstructions: true,
+    });
+  });
+
+  it("rejects unsupported TTS provider values", () => {
+    expect(() =>
+      buildCallRuntime({
+        demoDelivery: true,
+        env: {
+          TTS_PROVIDER: "legacy-provider",
+          TTS_API_KEY: "demo",
+        },
+      }),
+    ).toThrow("Unsupported TTS_PROVIDER");
+  });
+
   it("requires at least one live call provider when demo-delivery is disabled", () => {
     expect(() =>
       buildCallRuntime({

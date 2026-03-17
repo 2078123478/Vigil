@@ -10,7 +10,12 @@ import {
 } from "../src/skills/alphaos/living-assistant/delivery";
 import { runLivingAssistantLoop } from "../src/skills/alphaos/living-assistant/loop";
 import { normalizeSignal, pollBinanceAnnouncements, pollBinanceSquare, type NormalizedSignal } from "../src/skills/alphaos/living-assistant/signal-radar";
-import { createTTSProvider, type TTSOptions, type TTSProvider } from "../src/skills/alphaos/living-assistant/tts";
+import {
+  createTTSProvider,
+  type TTSOptions,
+  type TTSProvider,
+  type TTSProviderConfig,
+} from "../src/skills/alphaos/living-assistant/tts";
 
 interface DemoScenarioFixture {
   name: string;
@@ -204,27 +209,101 @@ export function parseCliOptions(argv = process.argv.slice(2)): DemoCliOptions {
   };
 }
 
+function readTTSProviderType(env: NodeJS.ProcessEnv = process.env): TTSProviderConfig["type"] {
+  const raw = readOptionalEnv("TTS_PROVIDER", env);
+  if (!raw) {
+    return "openai-compatible";
+  }
+
+  if (raw === "openai-compatible" || raw === "dashscope-qwen") {
+    return raw;
+  }
+
+  throw new Error(
+    `Unsupported TTS_PROVIDER: ${raw}. Supported values: openai-compatible, dashscope-qwen`,
+  );
+}
+
+function readOptionalTTSLanguage(
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+): TTSOptions["language"] | undefined {
+  const value = readOptionalEnv(name, env)?.toLowerCase();
+  if (!value) {
+    return undefined;
+  }
+  return value === "zh" || value === "en" ? value : undefined;
+}
+
+function normalizeTTSFormat(format: string | undefined, fallback: TTSOptions["format"]): TTSOptions["format"] {
+  if (!format) {
+    return fallback;
+  }
+  const normalized = format.trim().toLowerCase();
+  if (normalized === "wav" || normalized === "ogg") {
+    return normalized;
+  }
+  return "mp3";
+}
+
 function buildOptionalTTS(env: NodeJS.ProcessEnv = process.env): DemoRuntime {
-  const baseUrl = env.TTS_BASE_URL?.trim();
-  const apiKey = env.TTS_API_KEY?.trim();
+  const providerType = readTTSProviderType(env);
+  const apiKey = readOptionalEnv("TTS_API_KEY", env);
+  const model = readOptionalEnv("TTS_MODEL", env);
+  const voice = readOptionalEnv("TTS_VOICE", env);
+  const language = readOptionalTTSLanguage("TTS_LANGUAGE", env);
+  const instructions = readOptionalEnv("TTS_INSTRUCTIONS", env);
+  const optimizeInstructions = readOptionalBoolean("TTS_OPTIMIZE_INSTRUCTIONS", env);
+
+  if (providerType === "dashscope-qwen") {
+    if (!apiKey) {
+      return {};
+    }
+
+    const endpoint = readOptionalEnv("TTS_DASHSCOPE_ENDPOINT", env);
+    const languageType = readOptionalEnv("TTS_DASHSCOPE_LANGUAGE_TYPE", env);
+    const format = normalizeTTSFormat(readOptionalEnv("TTS_FORMAT", env), "wav");
+    return {
+      ttsProvider: createTTSProvider({
+        type: "dashscope-qwen",
+        apiKey,
+        ...(endpoint ? { endpoint } : {}),
+        ...(model ? { model } : {}),
+        ...(voice ? { defaultVoice: voice } : {}),
+        ...(languageType ? { languageType } : {}),
+        ...(instructions ? { defaultInstructions: instructions } : {}),
+        ...(typeof optimizeInstructions === "boolean" ? { optimizeInstructions } : {}),
+        defaultFormat: format,
+      }),
+      ttsOptions: {
+        format,
+        ...(voice ? { voice } : {}),
+        ...(language ? { language } : {}),
+        ...(instructions ? { instructions } : {}),
+        ...(typeof optimizeInstructions === "boolean" ? { optimizeInstructions } : {}),
+      },
+    };
+  }
+
+  const baseUrl = readOptionalEnv("TTS_BASE_URL", env);
   if (!baseUrl || !apiKey) {
     return {};
   }
 
-  const model = env.TTS_MODEL?.trim() || undefined;
-  const voice = env.TTS_VOICE?.trim() || undefined;
+  const format = normalizeTTSFormat(readOptionalEnv("TTS_FORMAT", env), "mp3");
   return {
     ttsProvider: createTTSProvider({
       type: "openai-compatible",
       baseUrl,
       apiKey,
-      model,
-      defaultVoice: voice,
-      defaultFormat: "mp3",
+      ...(model ? { model } : {}),
+      ...(voice ? { defaultVoice: voice } : {}),
+      defaultFormat: format,
     }),
     ttsOptions: {
-      format: "mp3",
+      format,
       ...(voice ? { voice } : {}),
+      ...(language ? { language } : {}),
     },
   };
 }
@@ -232,7 +311,9 @@ function buildOptionalTTS(env: NodeJS.ProcessEnv = process.env): DemoRuntime {
 function buildSendRuntime(): DemoRuntime {
   const runtime = buildOptionalTTS(process.env);
   if (!runtime.ttsProvider) {
-    throw new Error("--send requires TTS_BASE_URL and TTS_API_KEY");
+    throw new Error(
+      "--send requires TTS provider env: openai-compatible needs TTS_BASE_URL + TTS_API_KEY, dashscope-qwen needs TTS_API_KEY",
+    );
   }
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
@@ -270,6 +351,22 @@ function readOptionalPositiveInt(name: string, env: NodeJS.ProcessEnv = process.
   }
   const normalized = Math.trunc(parsed);
   return normalized > 0 ? normalized : undefined;
+}
+
+function readOptionalBoolean(name: string, env: NodeJS.ProcessEnv = process.env): boolean | undefined {
+  const value = readOptionalEnv(name, env);
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
 }
 
 function evaluateTwilioEnv(env: NodeJS.ProcessEnv): TwilioEnvConfig {
@@ -713,14 +810,21 @@ async function runLoopScenario(
   }
 
   let audioWritten = false;
-  if (loopOutput.audio && outputDir) {
-    const filePath = path.resolve(outputDir, `${toSafeFileName(`${scenario.name}-${loopOutput.signal.signalId}`)}.mp3`);
+  if (loopOutput.audio?.audio && outputDir) {
+    const filePath = path.resolve(
+      outputDir,
+      `${toSafeFileName(`${scenario.name}-${loopOutput.signal.signalId}`)}.${loopOutput.audio.format}`,
+    );
     fs.writeFileSync(filePath, loopOutput.audio.audio);
     audioWritten = true;
     console.log(`Audio file: ${filePath}`);
   }
 
-  if (!loopOutput.audio) {
+  if (loopOutput.audio?.audioUrl) {
+    console.log(`Audio URL: ${loopOutput.audio.audioUrl}`);
+  }
+
+  if (!loopOutput.audio || (!loopOutput.audio.audio && !loopOutput.audio.audioUrl)) {
     console.log("Audio: not generated");
   }
 

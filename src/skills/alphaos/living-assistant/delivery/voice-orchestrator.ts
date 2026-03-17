@@ -38,7 +38,7 @@ export class VoiceDeliveryOrchestrator {
 
   async deliver(
     attentionLevel: AttentionLevel,
-    brief: { text: string; audio?: Buffer; audioFormat?: string },
+    brief: { text: string; audio?: Buffer; audioUrl?: string; audioFormat?: string },
     options?: { demoMode?: boolean },
   ): Promise<VoiceDeliveryResult[]> {
     const results: VoiceDeliveryResult[] = [];
@@ -108,7 +108,10 @@ export class VoiceDeliveryOrchestrator {
         return;
       }
       try {
-        const result = await this.twilioSender.callWithTts(brief.text);
+        const audioUrl = typeof brief.audioUrl === "string" ? brief.audioUrl.trim() : "";
+        const result = audioUrl
+          ? await this.twilioSender.callWithAudio(audioUrl)
+          : await this.twilioSender.callWithTts(brief.text);
         trackResult("twilio", result);
       } catch (error) {
         trackResult("twilio", { ok: false, error: toError(error) });

@@ -8,6 +8,7 @@ It supports two phases:
 - live call execution (`--call`)
 
 The call path is Twilio-first, with Aliyun support preserved.
+When TTS returns a hosted audio URL, Twilio uses `<Play>`; otherwise it falls back to `<Say>`.
 
 ## 1) Rehearse call routing before credentials are ready
 
@@ -46,6 +47,13 @@ Set at least one live call provider:
 - Telegram fallback (optional, but recommended):
   - `TELEGRAM_BOT_TOKEN`
   - `TELEGRAM_CHAT_ID`
+- Optional TTS for Twilio synthesized playback (`<Play>`):
+  - `TTS_PROVIDER=dashscope-qwen`
+  - `TTS_API_KEY`
+  - optional: `TTS_MODEL` (default `qwen3-tts-flash`, instruct model example: `qwen3-tts-instruct-flash`)
+  - optional: `TTS_VOICE` (example: `Cherry`)
+  - optional: `TTS_INSTRUCTIONS` and `TTS_OPTIMIZE_INSTRUCTIONS`
+  - optional: `TTS_DASHSCOPE_ENDPOINT` (defaults to DashScope generation endpoint)
 
 Then run:
 
