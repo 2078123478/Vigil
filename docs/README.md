@@ -6,10 +6,11 @@ This index is the fastest way to understand what Personal Butler already has tod
 
 If you only have a few minutes, read in this order:
 
-1. [Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md) — shortest path to the protocol idea.
-2. [Agent-Comm V2 Design](AGENT_COMM_V2_DESIGN.md) — implementation-oriented protocol design.
-3. [AlphaOS Operations Guide](ALPHAOS_OPERATIONS.md) — current operator runbook for the execution engine.
-4. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md) — battle-tested deployment flow.
+1. [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md) — fastest ecosystem-facing overview.
+2. [Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md) — shortest path to the protocol idea.
+3. [Agent-Comm V2 Design](AGENT_COMM_V2_DESIGN.md) — implementation-oriented protocol design.
+4. [AlphaOS Operations Guide](ALPHAOS_OPERATIONS.md) — current operator runbook for the execution engine.
+5. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md) — battle-tested deployment flow.
 
 ---
 
@@ -17,6 +18,7 @@ If you only have a few minutes, read in this order:
 
 ### I want to understand the product quickly
 
+- [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md)
 - [Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md)
 - [Judge One-Pager](JUDGE_ONE_PAGER.md)
 - [Algorithm](ALGORITHM.md)
@@ -64,9 +66,10 @@ This is intentional for now. The project is preserving a working baseline first,
 
 Read:
 
-1. [Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md)
-2. [Judge One-Pager](JUDGE_ONE_PAGER.md)
-3. [Agent-Comm V2 Design](AGENT_COMM_V2_DESIGN.md)
+1. [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md)
+2. [Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md)
+3. [Judge One-Pager](JUDGE_ONE_PAGER.md)
+4. [Agent-Comm V2 Design](AGENT_COMM_V2_DESIGN.md)
 
 ### Path B — protocol engineer
 
