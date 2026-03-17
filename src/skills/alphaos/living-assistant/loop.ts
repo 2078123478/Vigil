@@ -5,6 +5,8 @@ import type {
   ContactPolicyConfig,
   UserContext,
 } from "./contact-policy";
+import { executeDelivery } from "./delivery/delivery-executor";
+import type { DeliveryExecutorConfig, DeliveryResult } from "./delivery/delivery-executor";
 import type { NormalizedSignal } from "./signal-radar";
 import type { TTSOptions, TTSProvider, TTSResult } from "./tts";
 import { generateVoiceBrief } from "./voice-brief";
@@ -17,6 +19,7 @@ export interface LivingAssistantLoopInput {
   briefProtocol?: VoiceBriefProtocol;
   ttsProvider?: TTSProvider;
   ttsOptions?: TTSOptions;
+  deliveryExecutor?: DeliveryExecutorConfig;
   demoMode?: boolean;
 }
 
@@ -25,6 +28,7 @@ export interface LivingAssistantLoopOutput {
   decision: ReturnType<typeof evaluateContactPolicy>;
   brief?: VoiceBrief;
   audio?: TTSResult;
+  delivery?: DeliveryResult;
   delivered: boolean;
   deliveryChannel?: ContactChannel;
   demoMode: boolean;
@@ -60,6 +64,7 @@ export async function runLivingAssistantLoop(
   const deliveryChannel = decision.channels[0];
   const demoMode = Boolean(input.demoMode);
   let audio: TTSResult | undefined;
+  let delivery: DeliveryResult | undefined;
 
   if (brief && input.ttsProvider) {
     try {
@@ -69,12 +74,17 @@ export async function runLivingAssistantLoop(
     }
   }
 
+  if (!demoMode && input.deliveryExecutor) {
+    delivery = await executeDelivery(decision, brief, audio, input.deliveryExecutor);
+  }
+
   return {
     signal: input.signal,
     decision,
     brief,
     audio,
-    delivered: demoMode ? false : Boolean(decision.shouldContact && deliveryChannel),
+    delivery,
+    delivered: demoMode ? false : Boolean(delivery?.sent),
     deliveryChannel,
     demoMode,
     loopCompletedAt: new Date().toISOString(),

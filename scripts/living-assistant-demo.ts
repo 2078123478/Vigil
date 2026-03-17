@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defaultContactPolicyConfig, type ContactPolicyConfig, type UserContext } from "../src/skills/alphaos/living-assistant/contact-policy";
+import { TelegramVoiceSender, type DeliveryExecutorConfig } from "../src/skills/alphaos/living-assistant/delivery";
 import { runLivingAssistantLoop } from "../src/skills/alphaos/living-assistant/loop";
 import { normalizeSignal, type NormalizedSignal } from "../src/skills/alphaos/living-assistant/signal-radar";
 import { createTTSProvider, type TTSOptions, type TTSProvider } from "../src/skills/alphaos/living-assistant/tts";
@@ -91,11 +92,50 @@ function buildOptionalTTS(): { ttsProvider?: TTSProvider; ttsOptions?: TTSOption
   };
 }
 
+function toBooleanEnv(name: string): boolean {
+  return process.env[name]?.trim().toLowerCase() === "true";
+}
+
+function buildOptionalDelivery(ttsProvider?: TTSProvider): DeliveryExecutorConfig | undefined {
+  if (!ttsProvider) {
+    return undefined;
+  }
+
+  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+  if (!botToken || !chatId) {
+    return undefined;
+  }
+
+  return {
+    telegramSender: new TelegramVoiceSender({
+      botToken,
+      chatId,
+    }),
+  };
+}
+
 async function main(): Promise<void> {
   console.log("Personal Butler — Living Assistant Demo");
 
+  const liveDelivery = toBooleanEnv("LIVE_DELIVERY");
   const scenarios = loadDemoScenarios();
+  const runScenarios = liveDelivery
+    ? scenarios.filter((scenario) => scenario.name === "proactive-arbitrage-alert")
+    : scenarios;
+  if (liveDelivery && runScenarios.length !== 1) {
+    throw new Error("LIVE_DELIVERY requires scenario fixture: proactive-arbitrage-alert");
+  }
+
   const { ttsProvider, ttsOptions } = buildOptionalTTS();
+  const deliveryExecutor = buildOptionalDelivery(ttsProvider);
+  if (liveDelivery && !ttsProvider) {
+    throw new Error("LIVE_DELIVERY=true requires TTS_BASE_URL and TTS_API_KEY");
+  }
+  if (liveDelivery && !deliveryExecutor?.telegramSender) {
+    throw new Error("LIVE_DELIVERY=true requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID");
+  }
+
   const outputDir = path.resolve(process.cwd(), "demo-output");
   if (ttsProvider) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -104,7 +144,7 @@ async function main(): Promise<void> {
   let briefsGenerated = 0;
   let audioFilesCreated = 0;
 
-  for (const scenario of scenarios) {
+  for (const scenario of runScenarios) {
     console.log("");
     console.log(`Scenario: ${scenario.name}`);
     console.log(`Description: ${scenario.description}`);
@@ -116,8 +156,9 @@ async function main(): Promise<void> {
         ...defaultContactPolicyConfig,
         ...(scenario.policyConfig ?? {}),
       },
-      demoMode: true,
+      demoMode: !liveDelivery,
       ...(ttsProvider ? { ttsProvider, ttsOptions } : {}),
+      ...(deliveryExecutor ? { deliveryExecutor } : {}),
     });
 
     console.log(`Signal: type=${output.signal.type}, title=${output.signal.title}, urgency=${output.signal.urgency}`);
@@ -146,12 +187,16 @@ async function main(): Promise<void> {
       console.log("Audio: not generated");
     }
 
+    if (liveDelivery) {
+      console.log(`Delivery: ${JSON.stringify(output.delivery ?? null)}`);
+    }
+
     console.log(`Loop status: demoMode=${output.demoMode}, loopCompletedAt=${output.loopCompletedAt}`);
   }
 
   console.log("");
   console.log(
-    `Summary: ${scenarios.length} scenarios run, ${briefsGenerated} briefs generated, ${audioFilesCreated} audio files created`,
+    `Summary: ${runScenarios.length} scenarios run, ${briefsGenerated} briefs generated, ${audioFilesCreated} audio files created`,
   );
 }
 
