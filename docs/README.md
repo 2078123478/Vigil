@@ -9,7 +9,8 @@ If you only have a few minutes, read in this order:
 1. [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md) — fastest ecosystem-facing overview.
 2. [Champion Agent System](CHAMPION_AGENT_SYSTEM.md) — champion-level blueprint for turning Personal Butler into a living BNB-native assistant.
 3. [Champion Demo Story](CHAMPION_DEMO_STORY.md) — judge-facing story, wow moments, and demo strategy for winning the room.
-4. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md) — the current roadmap for aligning Personal Butler with Binance official open skills.
+4. [Living Assistant MVP Plan](LIVING_ASSISTANT_MVP_PLAN.md) — concrete implementation plan for Signal Radar, Contact Policy, and Voice Brief.
+5. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md) — the current roadmap for aligning Personal Butler with Binance official open skills.
 5. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md) — fastest way to understand the flagship strategy module.
 6. [Arbitrage Module Spec v0](ARBITRAGE_MODULE_SPEC.md) — the first flagship strategy-module definition for the BN ecosystem direction.
 7. [Arbitrage Module Tasks](ARBITRAGE_MODULE_TASKS.md) — staged execution plan for turning the spec into a demoable module path.
@@ -34,6 +35,7 @@ If you only have a few minutes, read in this order:
 - [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md)
 - [Champion Agent System](CHAMPION_AGENT_SYSTEM.md)
 - [Champion Demo Story](CHAMPION_DEMO_STORY.md)
+- [Living Assistant MVP Plan](LIVING_ASSISTANT_MVP_PLAN.md)
 - [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md)
 - [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md)
 - [Arbitrage Demo Script](ARBITRAGE_DEMO_SCRIPT.md)
@@ -87,10 +89,11 @@ Read:
 1. [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md)
 2. [Champion Agent System](CHAMPION_AGENT_SYSTEM.md)
 3. [Champion Demo Story](CHAMPION_DEMO_STORY.md)
-4. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md)
-5. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md)
-6. [Arbitrage Demo Script](ARBITRAGE_DEMO_SCRIPT.md)
-7. [Judge One-Pager](JUDGE_ONE_PAGER.md)
+4. [Living Assistant MVP Plan](LIVING_ASSISTANT_MVP_PLAN.md)
+5. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md)
+6. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md)
+7. [Arbitrage Demo Script](ARBITRAGE_DEMO_SCRIPT.md)
+8. [Judge One-Pager](JUDGE_ONE_PAGER.md)
 
 ### Path B — protocol engineer
 
