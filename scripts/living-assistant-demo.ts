@@ -5,8 +5,12 @@ import { DigestBatchScheduler, type DigestBatch } from "../src/skills/alphaos/li
 import {
   TelegramVoiceSender,
   VoiceDeliveryOrchestrator,
+  buildVoiceRoutePolicy,
   type DeliveryExecutorConfig,
   type DeliveryResult,
+  type VoiceRouteAction,
+  type VoiceRouteAttentionLevel,
+  type VoiceRoutePolicy,
 } from "../src/skills/alphaos/living-assistant/delivery";
 import { runLivingAssistantLoop } from "../src/skills/alphaos/living-assistant/loop";
 import { normalizeSignal, pollBinanceAnnouncements, pollBinanceSquare, type NormalizedSignal } from "../src/skills/alphaos/living-assistant/signal-radar";
@@ -46,6 +50,7 @@ interface DemoRuntime {
   ttsOptions?: TTSOptions;
   deliveryExecutor?: DeliveryExecutorConfig;
   callProviders?: string[];
+  callRouteProfile?: CallRouteProfile;
   callRoute?: Array<{
     channel: CallChannel;
     simulated: boolean;
@@ -55,6 +60,7 @@ interface DemoRuntime {
 }
 
 type CallChannel = "twilio" | "aliyun" | "telegram";
+type CallRouteProfile = "balanced" | "telegram-escalation" | "direct-call-only";
 type EnvReadiness = "ready" | "incomplete" | "not_configured";
 
 interface CallChannelEnv {
@@ -109,6 +115,32 @@ interface LoopScenarioInput {
 
 const SEND_FIXTURE_SCENARIO = "proactive-arbitrage-alert";
 const CALL_FIXTURE_SCENARIO = "critical-risk-escalation";
+const SUPPORTED_CALL_ROUTE_PROFILES: CallRouteProfile[] = [
+  "balanced",
+  "telegram-escalation",
+  "direct-call-only",
+];
+const CALL_ROUTE_ACTIONS: VoiceRouteAction[] = [
+  "telegram_text",
+  "telegram_voice",
+  "twilio_call",
+  "aliyun_call",
+];
+const CALL_ROUTE_ENV_BY_LEVEL: Record<VoiceRouteAttentionLevel, string> = {
+  text_nudge: "CALL_ROUTE_TEXT_NUDGE",
+  voice_brief: "CALL_ROUTE_VOICE_BRIEF",
+  strong_interrupt: "CALL_ROUTE_STRONG_INTERRUPT",
+  call_escalation: "CALL_ROUTE_CALL_ESCALATION",
+};
+const CALL_ROUTE_PROFILE_OVERRIDES: Record<CallRouteProfile, Partial<VoiceRoutePolicy>> = {
+  balanced: {},
+  "telegram-escalation": {
+    call_escalation: ["telegram_voice", "twilio_call", "aliyun_call"],
+  },
+  "direct-call-only": {
+    call_escalation: ["twilio_call", "aliyun_call"],
+  },
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -166,7 +198,7 @@ function printUsageAndExit(): never {
   console.log("  --live     Poll real Binance announcements and run one loop per signal");
   console.log("  --dry-run  Print decision/brief only (default)");
   console.log("  --send     Run real delivery (requires TTS and Telegram env vars)");
-  console.log("  --call     Run phone delivery via Twilio/Aliyun (Twilio first), optional Telegram fallback");
+  console.log("  --call     Run phone delivery via configurable Twilio/Aliyun/Telegram route policy");
   console.log("  --demo-delivery  Simulate delivery results in --call mode without outbound API calls");
   process.exit(0);
 }
@@ -369,6 +401,80 @@ function readOptionalBoolean(name: string, env: NodeJS.ProcessEnv = process.env)
   return undefined;
 }
 
+function readCallRouteProfile(env: NodeJS.ProcessEnv = process.env): CallRouteProfile {
+  const value = readOptionalEnv("CALL_ROUTE_PROFILE", env);
+  if (!value) {
+    return "balanced";
+  }
+
+  const normalized = value.toLowerCase();
+  if (SUPPORTED_CALL_ROUTE_PROFILES.includes(normalized as CallRouteProfile)) {
+    return normalized as CallRouteProfile;
+  }
+
+  throw new Error(
+    `Unsupported CALL_ROUTE_PROFILE: ${value}. Supported values: ${SUPPORTED_CALL_ROUTE_PROFILES.join(", ")}`,
+  );
+}
+
+function parseRouteActionsCsv(raw: string, envName: string): VoiceRouteAction[] {
+  const parsed = raw
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0);
+
+  if (parsed.length === 0) {
+    throw new Error(
+      `${envName} is set but empty. Use a comma-separated list of: ${CALL_ROUTE_ACTIONS.join(", ")}`,
+    );
+  }
+
+  for (const action of parsed) {
+    if (!CALL_ROUTE_ACTIONS.includes(action as VoiceRouteAction)) {
+      throw new Error(
+        `Unsupported ${envName} action: ${action}. Supported actions: ${CALL_ROUTE_ACTIONS.join(", ")}`,
+      );
+    }
+  }
+
+  return parsed as VoiceRouteAction[];
+}
+
+function resolveCallRoutePolicy(
+  env: NodeJS.ProcessEnv = process.env,
+): {
+  profile: CallRouteProfile;
+  policy: VoiceRoutePolicy;
+} {
+  const profile = readCallRouteProfile(env);
+  const profileOverride = CALL_ROUTE_PROFILE_OVERRIDES[profile];
+  const policy = buildVoiceRoutePolicy(profileOverride);
+
+  for (const level of Object.keys(CALL_ROUTE_ENV_BY_LEVEL) as VoiceRouteAttentionLevel[]) {
+    const envName = CALL_ROUTE_ENV_BY_LEVEL[level];
+    const raw = readOptionalEnv(envName, env);
+    if (!raw) {
+      continue;
+    }
+    policy[level] = parseRouteActionsCsv(raw, envName);
+  }
+
+  return {
+    profile,
+    policy,
+  };
+}
+
+function toCallChannel(action: VoiceRouteAction): CallChannel {
+  if (action === "twilio_call") {
+    return "twilio";
+  }
+  if (action === "aliyun_call") {
+    return "aliyun";
+  }
+  return "telegram";
+}
+
 function evaluateTwilioEnv(env: NodeJS.ProcessEnv): TwilioEnvConfig {
   const accountSid = readOptionalEnv("TWILIO_ACCOUNT_SID", env);
   const authToken = readOptionalEnv("TWILIO_AUTH_TOKEN", env);
@@ -526,10 +632,11 @@ export function buildCallRuntime(options: BuildCallRuntimeOptions = {}): DemoRun
   const demoDelivery = options.demoDelivery === true;
   const runtime = buildOptionalTTS(env);
   const preflight = collectCallEnvPreflight(env);
+  const routePolicy = resolveCallRoutePolicy(env);
 
   assertCompleteEnv("Twilio", preflight.twilio);
   assertCompleteEnv("Aliyun", preflight.aliyun);
-  assertCompleteEnv("Telegram fallback", preflight.telegram);
+  assertCompleteEnv("Telegram", preflight.telegram);
 
   const liveCallProviders: Array<"twilio" | "aliyun"> = [];
   if (preflight.twilio.readiness === "ready") {
@@ -546,24 +653,49 @@ export function buildCallRuntime(options: BuildCallRuntimeOptions = {}): DemoRun
   const aliyunEnabled = preflight.aliyun.readiness === "ready";
   const telegramEnabled = preflight.telegram.readiness === "ready" || demoDelivery;
 
-  const callRoute: Array<{ channel: CallChannel; simulated: boolean }> = [];
-  if (twilioEnabled) {
-    callRoute.push({
-      channel: "twilio",
+  const channelState: Record<CallChannel, { enabled: boolean; simulated: boolean }> = {
+    twilio: {
+      enabled: twilioEnabled,
       simulated: preflight.twilio.readiness !== "ready",
-    });
-  }
-  if (aliyunEnabled) {
-    callRoute.push({
-      channel: "aliyun",
+    },
+    aliyun: {
+      enabled: aliyunEnabled,
       simulated: false,
-    });
-  }
-  if (telegramEnabled) {
-    callRoute.push({
-      channel: "telegram",
+    },
+    telegram: {
+      enabled: telegramEnabled,
       simulated: preflight.telegram.readiness !== "ready",
+    },
+  };
+
+  const seenChannels = new Set<CallChannel>();
+  const callRoute: Array<{ channel: CallChannel; simulated: boolean }> = [];
+  for (const action of routePolicy.policy.call_escalation) {
+    const channel = toCallChannel(action);
+    if (seenChannels.has(channel)) {
+      continue;
+    }
+
+    const state = channelState[channel];
+    if (!state.enabled) {
+      continue;
+    }
+
+    callRoute.push({
+      channel,
+      simulated: state.simulated,
     });
+    seenChannels.add(channel);
+  }
+
+  if (callRoute.length === 0) {
+    throw new Error(
+      [
+        "--call route policy produced no enabled channels for call_escalation.",
+        `Profile: ${routePolicy.profile}`,
+        "Set CALL_ROUTE_PROFILE and/or CALL_ROUTE_CALL_ESCALATION so at least one enabled channel is selected.",
+      ].join("\n"),
+    );
   }
 
   const voiceOrchestrator = new VoiceDeliveryOrchestrator({
@@ -603,6 +735,7 @@ export function buildCallRuntime(options: BuildCallRuntimeOptions = {}): DemoRun
           },
         }
       : {}),
+    routePolicy: routePolicy.policy,
   });
 
   runtime.deliveryExecutor = {
@@ -626,6 +759,7 @@ export function buildCallRuntime(options: BuildCallRuntimeOptions = {}): DemoRun
   runtime.callProviders = callRoute
     .filter((step) => step.channel === "twilio" || step.channel === "aliyun")
     .map((step) => step.channel);
+  runtime.callRouteProfile = routePolicy.profile;
   runtime.callRoute = callRoute;
   runtime.callPreflight = preflight;
   runtime.callDemoDelivery = demoDelivery;
@@ -664,11 +798,18 @@ function preflightStateLabel(status: CallChannelEnv): string {
   return `incomplete (missing: ${status.missing.join(", ")})`;
 }
 
-function printCallPreflight(preflight: CallEnvPreflight, demoDelivery: boolean): void {
+function printCallPreflight(
+  preflight: CallEnvPreflight,
+  demoDelivery: boolean,
+  routeProfile?: CallRouteProfile,
+): void {
   console.log("Call preflight:");
   console.log(`- Twilio: ${preflightStateLabel(preflight.twilio)}`);
   console.log(`- Aliyun: ${preflightStateLabel(preflight.aliyun)}`);
-  console.log(`- Telegram fallback: ${preflightStateLabel(preflight.telegram)}`);
+  console.log(`- Telegram: ${preflightStateLabel(preflight.telegram)}`);
+  if (routeProfile) {
+    console.log(`- Route profile: ${routeProfile}`);
+  }
   if (demoDelivery) {
     console.log("- Delivery demo mode: enabled (simulated channel results, outbound APIs are not called)");
   }
@@ -876,10 +1017,10 @@ async function main(): Promise<void> {
   const runtime = cli.send ? buildSendRuntime() : cli.call ? buildCallRuntime({ demoDelivery: cli.demoDelivery }) : {};
   const digestScheduler = new DigestBatchScheduler();
   if (cli.call && runtime.callPreflight) {
-    printCallPreflight(runtime.callPreflight, Boolean(runtime.callDemoDelivery));
+    printCallPreflight(runtime.callPreflight, Boolean(runtime.callDemoDelivery), runtime.callRouteProfile);
   }
   if (cli.call && runtime.callRoute && runtime.callRoute.length > 0) {
-    console.log(`Call route: ${runtime.callRoute.map(callRouteLabel).join(" -> ")} (Twilio priority first)`);
+    console.log(`Call route (call_escalation): ${runtime.callRoute.map(callRouteLabel).join(" -> ")}`);
   }
   const outputDir = runtime.ttsProvider ? path.resolve(process.cwd(), "demo-output") : undefined;
   if (outputDir) {

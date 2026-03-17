@@ -7,7 +7,11 @@ It supports two phases:
 - pre-credential rehearsal (`--call --demo-delivery`)
 - live call execution (`--call`)
 
-The call path is Twilio-first, with Aliyun support preserved.
+Call routing is policy-driven and operator-configurable.
+Default route profile is `balanced`:
+- `strong_interrupt`: `telegram_voice -> twilio_call -> aliyun_call`
+- `call_escalation`: `twilio_call -> aliyun_call -> telegram_voice`
+
 When TTS returns a hosted audio URL, Twilio uses `<Play>`; otherwise it falls back to `<Say>`.
 
 ## 1) Rehearse call routing before credentials are ready
@@ -25,13 +29,23 @@ What this does:
 - **does not call outbound APIs**
 - prints simulated per-channel results so judges can see the full escalation path
 
-Expected route (no credentials configured):
+Default expected `call_escalation` route (no credentials configured):
 
 - `twilio(simulated) -> telegram(simulated)`
 
 ## 2) Run live call mode when credentials are ready
 
 Set at least one live call provider:
+
+- Route policy (optional):
+  - `CALL_ROUTE_PROFILE=balanced|telegram-escalation|direct-call-only`
+  - optional per-level overrides:
+    - `CALL_ROUTE_TEXT_NUDGE`
+    - `CALL_ROUTE_VOICE_BRIEF`
+    - `CALL_ROUTE_STRONG_INTERRUPT`
+    - `CALL_ROUTE_CALL_ESCALATION`
+  - route actions use comma-separated values from:
+    - `telegram_text`, `telegram_voice`, `twilio_call`, `aliyun_call`
 
 - Twilio required vars:
   - `TWILIO_ACCOUNT_SID`
@@ -44,7 +58,7 @@ Set at least one live call provider:
   - `ALIYUN_CALLED_SHOW_NUMBER`
   - `ALIYUN_CALLED_NUMBER`
   - `ALIYUN_TTS_CODE`
-- Telegram fallback (optional, but recommended):
+- Telegram channel (optional, recommended for reminder/voice nudge delivery):
   - `TELEGRAM_BOT_TOKEN`
   - `TELEGRAM_CHAT_ID`
 - Optional TTS for Twilio synthesized playback (`<Play>`):
@@ -68,8 +82,9 @@ The script now prints:
 - provider preflight:
   - Twilio readiness
   - Aliyun readiness
-  - Telegram fallback readiness
-- resolved route with simulation markers when applicable
+  - Telegram readiness
+  - active route profile
+- resolved `call_escalation` route with simulation markers when applicable
 - per-channel delivery outcomes:
   - `ok/failed`
   - channel reference (`callSid`, `callId`, or `messageId`)
@@ -81,5 +96,7 @@ The script now prints:
   - set a full Twilio or Aliyun config, or use `--call --demo-delivery` first.
 - `--call Twilio config is incomplete...`
   - complete all required `TWILIO_*` vars or clear partial values.
-- `--call Telegram fallback config is incomplete...`
+- `--call Telegram config is incomplete...`
   - set both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, or clear both.
+- `--call route policy produced no enabled channels for call_escalation.`
+  - adjust `CALL_ROUTE_PROFILE` / `CALL_ROUTE_CALL_ESCALATION` to include at least one enabled channel.

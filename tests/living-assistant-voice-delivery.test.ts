@@ -424,6 +424,43 @@ describe("voice delivery channels", () => {
       expect(results.map((item) => item.channel)).toEqual(["twilio", "telegram"]);
     });
 
+    it("supports configurable call_escalation route policy", async () => {
+      const twilioSpy = vi.spyOn(TwilioCallSender.prototype, "callWithTts").mockResolvedValue({
+        ok: true,
+        callSid: "CA334",
+      });
+      const telegramVoiceSpy = vi
+        .spyOn(TelegramVoiceSender.prototype, "sendVoice")
+        .mockResolvedValue({ ok: true, messageId: 61 });
+
+      const orchestrator = new VoiceDeliveryOrchestrator({
+        telegram: {
+          botToken: "token",
+          defaultChatId: "chat-id",
+        },
+        twilio: {
+          accountSid: "AC111",
+          authToken: "token",
+          fromNumber: "+12025550100",
+          defaultToNumber: "+12025550200",
+        },
+        routePolicy: {
+          call_escalation: ["telegram_voice", "twilio_call"],
+        },
+      });
+
+      const results = await orchestrator.deliver("call_escalation", {
+        text: "custom escalation",
+        audio: Buffer.from("voice-data"),
+        audioFormat: "ogg",
+      });
+
+      expect(telegramVoiceSpy).toHaveBeenCalledTimes(1);
+      expect(twilioSpy).toHaveBeenCalledTimes(1);
+      expect(telegramVoiceSpy.mock.invocationCallOrder[0]).toBeLessThan(twilioSpy.mock.invocationCallOrder[0]);
+      expect(results.map((item) => item.channel)).toEqual(["telegram", "twilio"]);
+    });
+
     it("prefers Twilio callWithAudio when synthesized audioUrl exists", async () => {
       const twilioAudioSpy = vi.spyOn(TwilioCallSender.prototype, "callWithAudio").mockResolvedValue({
         ok: true,

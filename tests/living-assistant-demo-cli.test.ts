@@ -24,6 +24,7 @@ describe("living assistant demo CLI", () => {
     });
 
     expect(runtime.callDemoDelivery).toBe(true);
+    expect(runtime.callRouteProfile).toBe("balanced");
     expect(runtime.callPreflight?.twilio.readiness).toBe("not_configured");
     expect(runtime.callPreflight?.aliyun.readiness).toBe("not_configured");
     expect(runtime.callPreflight?.telegram.readiness).toBe("not_configured");
@@ -94,7 +95,7 @@ describe("living assistant demo CLI", () => {
     ).toThrow("--call requires at least one ready call provider (Twilio or Aliyun).");
   });
 
-  it("keeps Twilio-first route for live credentials and enables Telegram fallback when present", () => {
+  it("uses balanced route profile by default and enables Telegram channel when present", () => {
     const runtime = buildCallRuntime({
       env: {
         TWILIO_ACCOUNT_SID: "AC123",
@@ -107,6 +108,7 @@ describe("living assistant demo CLI", () => {
     });
 
     expect(runtime.callDemoDelivery).toBe(false);
+    expect(runtime.callRouteProfile).toBe("balanced");
     expect(runtime.callProviders).toEqual(["twilio"]);
     expect(runtime.callRoute).toEqual([
       { channel: "twilio", simulated: false },
@@ -115,5 +117,57 @@ describe("living assistant demo CLI", () => {
     expect(runtime.callPreflight?.twilio.readiness).toBe("ready");
     expect(runtime.callPreflight?.telegram.readiness).toBe("ready");
     expect(runtime.deliveryExecutor?.voiceOrchestratorOptions).toBeUndefined();
+  });
+
+  it("supports telegram-escalation route profile", () => {
+    const runtime = buildCallRuntime({
+      demoDelivery: true,
+      env: {
+        CALL_ROUTE_PROFILE: "telegram-escalation",
+      },
+    });
+
+    expect(runtime.callRouteProfile).toBe("telegram-escalation");
+    expect(runtime.callRoute).toEqual([
+      { channel: "telegram", simulated: true },
+      { channel: "twilio", simulated: true },
+    ]);
+  });
+
+  it("supports per-level call route override env", () => {
+    const runtime = buildCallRuntime({
+      demoDelivery: true,
+      env: {
+        CALL_ROUTE_CALL_ESCALATION: "telegram_voice,twilio_call",
+      },
+    });
+
+    expect(runtime.callRouteProfile).toBe("balanced");
+    expect(runtime.callRoute).toEqual([
+      { channel: "telegram", simulated: true },
+      { channel: "twilio", simulated: true },
+    ]);
+  });
+
+  it("rejects unsupported call route profile values", () => {
+    expect(() =>
+      buildCallRuntime({
+        demoDelivery: true,
+        env: {
+          CALL_ROUTE_PROFILE: "legacy-default",
+        },
+      }),
+    ).toThrow("Unsupported CALL_ROUTE_PROFILE");
+  });
+
+  it("rejects unsupported call route action overrides", () => {
+    expect(() =>
+      buildCallRuntime({
+        demoDelivery: true,
+        env: {
+          CALL_ROUTE_CALL_ESCALATION: "telegram_voice,unknown_action",
+        },
+      }),
+    ).toThrow("Unsupported CALL_ROUTE_CALL_ESCALATION action");
   });
 });
