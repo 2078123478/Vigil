@@ -9,7 +9,7 @@ If you only have a few minutes, read in this order:
 1. [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md) — fastest ecosystem-facing overview.
 2. [Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md) — shortest path to the protocol idea.
 3. [Agent-Comm V2 Design](AGENT_COMM_V2_DESIGN.md) — implementation-oriented protocol design.
-4. [AlphaOS Operations Guide](ALPHAOS_OPERATIONS.md) — current operator runbook for the execution engine.
+4. [Personal Butler Operations Guide](ALPHAOS_OPERATIONS.md) — current operator runbook for the execution stack.
 5. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md) — battle-tested deployment flow.
 
 ---
@@ -21,7 +21,7 @@ If you only have a few minutes, read in this order:
 - [BNB Chain One Pager](BNBCHAIN_ONE_PAGER.md)
 - [Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md)
 - [Judge One-Pager](JUDGE_ONE_PAGER.md)
-- [Algorithm](ALGORITHM.md)
+- [Execution Algorithm](ALGORITHM.md)
 
 ### I want the protocol and architecture
 
@@ -39,7 +39,7 @@ If you only have a few minutes, read in this order:
 
 ### I want to run the current system
 
-- [AlphaOS Operations Guide](ALPHAOS_OPERATIONS.md)
+- [Personal Butler Operations Guide](ALPHAOS_OPERATIONS.md)
 - [Agent-Comm V2 Operations](AGENT_COMM_V2_OPERATIONS.md)
 - [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
 - [OpenClaw Discovery Playbook](OPENCLAW_DISCOVERY_PLAYBOOK.md)
@@ -84,7 +84,7 @@ Read:
 
 Read:
 
-1. [AlphaOS Operations Guide](ALPHAOS_OPERATIONS.md)
+1. [Personal Butler Operations Guide](ALPHAOS_OPERATIONS.md)
 2. [Agent-Comm V2 Operations](AGENT_COMM_V2_OPERATIONS.md)
 3. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
 4. [OpenClaw Discovery Playbook](OPENCLAW_DISCOVERY_PLAYBOOK.md)

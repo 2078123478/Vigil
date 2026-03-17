@@ -184,7 +184,7 @@ Start here:
 - [Agent-Comm One Pager](docs/AGENT_COMM_ONE_PAGER.md)
 - [Agent-Comm V2 Design](docs/AGENT_COMM_V2_DESIGN.md)
 - [Production Deployment Guide](docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
-- [AlphaOS Operations Guide](docs/ALPHAOS_OPERATIONS.md)
+- [Personal Butler Operations Guide](docs/ALPHAOS_OPERATIONS.md)
 
 ---
 

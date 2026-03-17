@@ -1,6 +1,8 @@
-# AlphaOS Operations Guide
+# Personal Butler Operations Guide (Current Execution Stack)
 
-A step-by-step operator runbook for the AlphaOS arbitrage engine — from configuration to data export.
+A step-by-step operator runbook for the current Personal Butler execution stack — from configuration to data export.
+
+> Note: some environment variables, API paths, and code modules still use historical names such as `ONCHAINOS` and `alphaos`. They are preserved here because they reflect the working implementation.
 
 ---
 
@@ -9,7 +11,7 @@ A step-by-step operator runbook for the AlphaOS arbitrage engine — from config
 Copy the example and fill in your credentials:
 
 ```bash
-cd ~/apps/apps/onchainos
+cd ~/apps/apps/personal-butler
 cp .env.example .env
 ```
 
@@ -17,7 +19,7 @@ cp .env.example .env
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `ONCHAINOS_API_BASE` | OnchainOS API endpoint | `https://www.okx.com` |
+| `ONCHAINOS_API_BASE` | Current execution backend API endpoint | `https://www.okx.com` |
 | `ONCHAINOS_API_KEY` | API key | `your-api-key` |
 | `ONCHAINOS_API_SECRET` | API secret (for HMAC signing) | `your-api-secret` |
 | `ONCHAINOS_PASSPHRASE` | API passphrase | `your-passphrase` |
@@ -33,17 +35,17 @@ cp .env.example .env
 **Key tuning parameters (with defaults):**
 
 ```bash
-START_MODE=paper              # paper or live
-ENGINE_INTERVAL_MS=5000       # tick interval (ms)
-PAIR=ETH/USDC                 # trading pair
-DEX_A=okx-dex-a               # first DEX source
-DEX_B=okx-dex-b               # second DEX source
+START_MODE=paper               # paper or live
+ENGINE_INTERVAL_MS=5000        # tick interval (ms)
+PAIR=ETH/USDC                  # trading pair
+DEX_A=okx-dex-a                # first DEX source
+DEX_B=okx-dex-b                # second DEX source
 PAPER_START_BALANCE_USD=10000  # paper mode starting balance
-MIN_NET_EDGE_BPS_PAPER=45     # minimum net edge to execute (paper)
-MIN_NET_EDGE_BPS_LIVE=60      # minimum net edge to execute (live)
-SLIPPAGE_BPS=12               # estimated slippage
-TAKER_FEE_BPS=20              # taker fee per side
-GAS_USD_DEFAULT=1.25          # estimated gas cost per tx
+MIN_NET_EDGE_BPS_PAPER=45      # minimum net edge to execute (paper)
+MIN_NET_EDGE_BPS_LIVE=60       # minimum net edge to execute (live)
+SLIPPAGE_BPS=12                # estimated slippage
+TAKER_FEE_BPS=20               # taker fee per side
+GAS_USD_DEFAULT=1.25           # estimated gas cost per tx
 ```
 
 ---
@@ -57,7 +59,7 @@ npm run dev
 This starts:
 - HTTP API server on `http://localhost:3000`
 - Engine tick loop (every `ENGINE_INTERVAL_MS`)
-- Market watch (polls OnchainOS for quotes)
+- Market watch (polls the current execution backend for quotes)
 - Demo page at `http://localhost:3000/demo`
 
 The engine immediately begins scanning for arbitrage opportunities in paper mode.
@@ -71,7 +73,7 @@ The engine immediately begins scanning for arbitrage opportunities in paper mode
 Open `http://localhost:3000/demo` in a browser. It streams:
 - Real-time opportunities and trades
 - Growth moments (daily summary, best trade, streaks)
-- OnchainOS probe status (v6 path readiness)
+- Execution backend probe status (current v6 path readiness)
 
 **API — Key Endpoints:**
 
@@ -94,7 +96,7 @@ curl http://localhost:3000/api/v1/growth/moments?limit=5
 # Battle report
 curl http://localhost:3000/api/v1/growth/share/latest
 
-# OnchainOS integration health
+# Current execution backend integration health
 curl http://localhost:3000/api/v1/integration/onchainos/status
 ```
 
@@ -112,7 +114,7 @@ Streams JSON events with opportunities, trades, PnL updates, and mode changes.
 
 **Paper mode** (default): simulates trades against real quotes, no on-chain execution.
 
-**Live mode**: executes real trades through OnchainOS v6 flow (`quote → swap → simulate → broadcast`).
+**Live mode**: executes real trades through the current v6 flow (`quote → swap → simulate → broadcast`).
 
 ```bash
 # Switch to paper
@@ -130,7 +132,7 @@ curl -X POST http://localhost:3000/api/v1/engine/mode \
 
 ## 5. Strategy Tuning
 
-AlphaOS supports strategy profiles with variant switching:
+The current execution stack supports strategy profiles with variant switching:
 
 ```bash
 # Set variant B with custom parameters
@@ -243,7 +245,7 @@ npm run demo:discovery
 
 ---
 
-## 8. OnchainOS Integration Probe
+## 8. Execution Backend Probe
 
 Verify the full v6 execution path is healthy:
 
@@ -283,4 +285,4 @@ No external database required. Data persists across restarts.
 | Today's metrics | `curl localhost:3000/api/v1/metrics/today` |
 | Export CSV | `curl localhost:3000/api/v1/backtest/snapshot?hours=24&format=csv` |
 | Battle report | `curl localhost:3000/api/v1/growth/share/latest` |
-| Probe OnchainOS | `curl -X POST localhost:3000/api/v1/integration/onchainos/probe -d '{"pair":"ETH/USDC","chainIndex":"196","notionalUsd":25}'` |
+| Probe execution backend | `curl -X POST localhost:3000/api/v1/integration/onchainos/probe -d '{"pair":"ETH/USDC","chainIndex":"196","notionalUsd":25}'` |

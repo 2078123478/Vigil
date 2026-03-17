@@ -1,8 +1,10 @@
-# AlphaOS 算法说明（中文）
+# Personal Butler 执行算法说明（中文）
+
+> 说明：本文描述的是 **Personal Butler 当前执行层** 的算法与风控逻辑。代码实现中仍保留历史模块名 `alphaos`，但对外定位已经转向 Personal Butler。
 
 ## 盈利原理（先看）
 
-AlphaOS 的核心不是预测方向，而是捕捉**同一交易对在不同 DEX 的瞬时价差**。
+Personal Butler 当前执行层的核心不是预测方向，而是捕捉**同一交易对在不同 DEX 的瞬时价差**。
 
 执行逻辑：
 
@@ -36,10 +38,10 @@ netUsd   = grossUsd - totalCostUsd
 ## 关键风险点（先看）
 
 1. **价差幻觉风险**：可见价差在下单瞬间消失。
-2. **滑点/流动性风险**：仓位相对流动性过大时，冲击成本非线性上升。
+2. **滑点 / 流动性风险**：仓位相对流动性过大时，冲击成本非线性上升。
 3. **延迟风险**：报价延迟与链路延迟会吞噬边际。
 4. **MEV 风险**：夹子、重排导致预期收益偏离。
-5. **权限风险**：live 下 simulate/broadcast 可能被白名单或权限限制。
+5. **权限风险**：live 下 simulate / broadcast 可能被白名单或权限限制。
 6. **模型风险**：成本与失败概率是估计值，真实成交会偏离。
 7. **市场状态切换风险**：波动、gas、深度变化会使阈值失效。
 
@@ -53,7 +55,7 @@ scan -> evaluate -> plan -> simulate -> execute -> record -> notify
 
 对应代码：
 
-- 策略扫描/评估/规划：`src/skills/alphaos/plugins/dex-arbitrage.ts`
+- 策略扫描 / 评估 / 规划：`src/skills/alphaos/plugins/dex-arbitrage.ts`
 - 成本模型：`src/skills/alphaos/runtime/cost-model.ts`
 - 模拟与通过判定：`src/skills/alphaos/runtime/simulator.ts`
 - 编排、去重、降级：`src/skills/alphaos/engine/alpha-engine.ts`
@@ -153,7 +155,7 @@ pass = riskAdjustedNetEdgeBps >= modeThreshold
 - 24h 模拟净收益 > 0
 - 24h 模拟胜率 >= 55%
 - 24h 权限失败 = 0
-- 拒单率/延迟/滑点偏差不超过动态阈值
+- 拒单率 / 延迟 / 滑点偏差不超过动态阈值
 
 动态阈值会随市场压力（波动、gas、流动性）收紧。
 
@@ -164,7 +166,7 @@ pass = riskAdjustedNetEdgeBps >= modeThreshold
 - 连续失败超限
 - 日内亏损超过 `MAX_DAILY_LOSS_PCT`
 - 权限失败累计过多
-- 拒单率/延迟/滑点偏差恶化
+- 拒单率 / 延迟 / 滑点偏差恶化
 
 ### 5) 权限降级
 
