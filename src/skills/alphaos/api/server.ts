@@ -12,6 +12,7 @@ import { StateStore } from "../runtime/state-store";
 import { SandboxReplayService } from "../runtime/sandbox-replay";
 import { DiscoveryEngine } from "../runtime/discovery/discovery-engine";
 import type { BacktestSnapshotRow, RiskPolicy, SkillManifest } from "../types";
+import { adaptArbitrageModuleResponse } from "../module/response-adapter";
 import {
   exportIdentityArtifactBundle,
   importRevocationNotice,
@@ -1864,8 +1865,21 @@ export function createServer(
       return;
     }
     try {
+      const discoveryCandidate = store.getDiscoveryCandidate(sessionId, candidateId) ?? undefined;
       const result = await discovery.approveCandidate(sessionId, candidateId, mode);
-      res.json(result);
+      const updatedCandidate = store.getDiscoveryCandidate(sessionId, candidateId) ?? discoveryCandidate;
+      const moduleResponse = adaptArbitrageModuleResponse({
+        requestId: `discovery:${sessionId}:${candidateId}`,
+        mode,
+        requestedMode: mode,
+        effectiveMode: result.effectiveMode,
+        discoveryCandidate: updatedCandidate ?? undefined,
+        approveResult: result,
+      });
+      res.json({
+        ...result,
+        moduleResponse,
+      });
     } catch (error) {
       handleDiscoveryError(res, error);
     }

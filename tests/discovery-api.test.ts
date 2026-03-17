@@ -378,6 +378,7 @@ describe("discovery api", () => {
     );
     expect(approve.status).toBe(200);
     expect((approve.body as { approved: boolean }).approved).toBe(true);
+    expect((approve.body as { moduleResponse: { module: string } }).moduleResponse.module).toBe("arbitrage");
 
     const stop = await invokeApi(
       app,
