@@ -134,6 +134,7 @@ Demo scripts:
 ```bash
 npm run demo:run            # full arbitrage cycle demo
 npm run demo:discovery      # discovery engine demo
+npm run demo:living-assistant -- --live   # live radar poll (announcements + optional Square endpoint)
 npm run demo:smoke:live     # current live-integration smoke test
 ```
 

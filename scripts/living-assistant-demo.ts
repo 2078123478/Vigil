@@ -8,7 +8,7 @@ import {
   type DeliveryResult,
 } from "../src/skills/alphaos/living-assistant/delivery";
 import { runLivingAssistantLoop } from "../src/skills/alphaos/living-assistant/loop";
-import { normalizeSignal, pollBinanceAnnouncements, type NormalizedSignal } from "../src/skills/alphaos/living-assistant/signal-radar";
+import { normalizeSignal, pollBinanceAnnouncements, pollBinanceSquare, type NormalizedSignal } from "../src/skills/alphaos/living-assistant/signal-radar";
 import { createTTSProvider, type TTSOptions, type TTSProvider } from "../src/skills/alphaos/living-assistant/tts";
 
 interface DemoScenarioFixture {
@@ -256,6 +256,19 @@ function readOptionalEnv(name: string, env: NodeJS.ProcessEnv = process.env): st
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readOptionalPositiveInt(name: string, env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const value = readOptionalEnv(name, env);
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  const normalized = Math.trunc(parsed);
+  return normalized > 0 ? normalized : undefined;
 }
 
 function evaluateTwilioEnv(env: NodeJS.ProcessEnv): TwilioEnvConfig {
@@ -742,26 +755,79 @@ async function main(): Promise<void> {
   if (cli.live) {
     const liveContext = resolveLiveContext(scenarios);
     const pollStartedAt = performance.now();
-    const pollResult = await pollBinanceAnnouncements();
-    pollDurationMs = performance.now() - pollStartedAt;
-
-    if (pollResult.error) {
-      console.error(`Poll error: ${pollResult.error}`);
+    const announcementPollStartedAt = performance.now();
+    const announcementResult = await pollBinanceAnnouncements();
+    const announcementPollDurationMs = performance.now() - announcementPollStartedAt;
+    if (announcementResult.error) {
+      pollDurationMs = performance.now() - pollStartedAt;
+      console.error(`Poll error: ${announcementResult.error}`);
       process.exit(1);
     }
 
-    console.log(
-      `Live poll: fetchedAt=${pollResult.fetchedAt}, articleCount=${pollResult.articleCount}, newSignals=${pollResult.signals.length}, duration=${formatDurationMs(pollDurationMs)}`,
-    );
+    const squareEndpoint = readOptionalEnv("BINANCE_SQUARE_ENDPOINT");
+    const squarePageSize = readOptionalPositiveInt("BINANCE_SQUARE_PAGE_SIZE");
+    const squareKeywordCsv = readOptionalEnv("BINANCE_SQUARE_KEYWORDS");
+    const squareKeywords = squareKeywordCsv
+      ? squareKeywordCsv
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : [];
 
-    if (pollResult.signals.length === 0) {
-      console.log("No new Binance announcement signals.");
+    let squareSignals: NormalizedSignal[] = [];
+    let squarePostCount = 0;
+    let squareFetchedAt = "";
+    let squarePollDurationMs: number | undefined;
+    if (squareEndpoint) {
+      const squarePollStartedAt = performance.now();
+      const squareResult = await pollBinanceSquare({
+        endpoint: squareEndpoint,
+        ...(squarePageSize ? { pageSize: squarePageSize } : {}),
+        ...(squareKeywords.length > 0 ? { includeKeywords: squareKeywords } : {}),
+      });
+      squarePollDurationMs = performance.now() - squarePollStartedAt;
+
+      if (squareResult.error) {
+        console.warn(`Square poll warning: ${squareResult.error}`);
+      } else {
+        squareSignals = squareResult.signals;
+        squarePostCount = squareResult.postCount;
+        squareFetchedAt = squareResult.fetchedAt;
+      }
+    } else {
+      console.log("Live poll: BINANCE_SQUARE_ENDPOINT not set, skipping Square polling.");
+    }
+
+    pollDurationMs = performance.now() - pollStartedAt;
+
+    console.log(
+      `Live poll (announcements): fetchedAt=${announcementResult.fetchedAt}, articleCount=${announcementResult.articleCount}, newSignals=${announcementResult.signals.length}, duration=${formatDurationMs(announcementPollDurationMs)}`,
+    );
+    if (squareEndpoint) {
+      console.log(
+        `Live poll (square): fetchedAt=${squareFetchedAt || "n/a"}, postCount=${squarePostCount}, newSignals=${squareSignals.length}, duration=${typeof squarePollDurationMs === "number" ? formatDurationMs(squarePollDurationMs) : "n/a"}`,
+      );
+    }
+
+    const liveSignals = [...announcementResult.signals, ...squareSignals].sort((a, b) => {
+      const aTs = Date.parse(a.detectedAt);
+      const bTs = Date.parse(b.detectedAt);
+      const aValue = Number.isFinite(aTs) ? aTs : 0;
+      const bValue = Number.isFinite(bTs) ? bTs : 0;
+      return bValue - aValue;
+    });
+
+    if (liveSignals.length === 0) {
+      console.log("No new live Binance announcement/Square signals.");
       return;
     }
 
-    runScenarios = pollResult.signals.map((signal, index) => ({
-      name: `live-signal-${index + 1}`,
-      description: `Binance announcement signal ${signal.signalId}`,
+    runScenarios = liveSignals.map((signal, index) => ({
+      name: `live-signal-${signal.source}-${index + 1}`,
+      description:
+        signal.source === "binance_square"
+          ? `Binance Square signal ${signal.signalId}`
+          : `Binance announcement signal ${signal.signalId}`,
       signal,
       userContext: liveContext.userContext,
       policyConfig: liveContext.policyConfig,

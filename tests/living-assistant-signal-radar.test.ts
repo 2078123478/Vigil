@@ -77,6 +77,23 @@ describe("living assistant signal radar", () => {
     expect(normalized.relevanceHint).toBe("likely_relevant");
   });
 
+  it("normalizes a square narrative event", () => {
+    const normalized = normalizeSignal({
+      kind: "square_narrative",
+      title: "Square meme narrative is accelerating",
+      body: "Mentions of $BNB-linked meme pairs are rising.",
+      urgency: "medium",
+      relevanceHint: "likely_relevant",
+      detectedAt: "2026-03-17T08:15:00.000Z",
+    });
+
+    expect(normalized.signalId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(normalized.source).toBe("binance_square");
+    expect(normalized.type).toBe("meme_surge");
+    expect(normalized.urgency).toBe("medium");
+    expect(normalized.relevanceHint).toBe("likely_relevant");
+  });
+
   it("loads a signal capsule fixture", () => {
     const fixturePath = path.resolve(process.cwd(), "fixtures/signal-capsules/binance-announcement-eth-listing.json");
     const signals = loadSignalCapsule(fixturePath);
