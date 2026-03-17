@@ -181,7 +181,7 @@ Start here:
 
 - [Documentation Index](docs/README.md)
 - [BNB Chain One Pager](docs/BNBCHAIN_ONE_PAGER.md)
-- [Agent-Comm One Pager](docs/AGENT_COMM_ONE_PAGER.md)
+- [Personal Butler Agent-Comm One Pager](docs/AGENT_COMM_ONE_PAGER.md)
 - [Agent-Comm V2 Design](docs/AGENT_COMM_V2_DESIGN.md)
 - [Production Deployment Guide](docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
 - [Personal Butler Operations Guide](docs/ALPHAOS_OPERATIONS.md)
