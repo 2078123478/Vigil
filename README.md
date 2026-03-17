@@ -1,12 +1,13 @@
 # Personal Butler
 
-Personal Butler is a skill-oriented autonomous agent framework for building private, wallet-native, chain-aware AI assistants.
+Personal Butler is a skill-oriented autonomous agent framework for building private, wallet-native, chain-aware AI assistants with proactive sensing and contact judgment.
 
-It combines three layers in one project:
+It combines four layers in one project:
 
 - **Agent identity & communication** — agents own wallets, exchange signed contact cards, and communicate through consent-gated encrypted messages.
 - **Composable skill runtime** — capabilities are organized as skills with clear boundaries and reusable infrastructure.
 - **On-chain execution workflows** — market discovery, strategy evaluation, simulation, and execution can be connected into a production-style loop.
+- **Living assistant experience loop** — ecosystem signal radar, contact policy, and one-breath voice briefing are combined into a proactive demo-safe assistant flow.
 
 **Positioning:** built to evolve toward **BNB Chain-friendly agent infrastructure**, while preserving the full working codebase and battle-tested flows from the original project baseline.
 
@@ -235,6 +236,14 @@ GET  /api/v1/strategies/status
 POST /api/v1/discovery/sessions/start
 GET  /api/v1/discovery/sessions/:id/report
 POST /api/v1/discovery/sessions/:id/approve
+```
+
+### Living Assistant
+
+```text
+POST /api/v1/living-assistant/evaluate
+GET  /api/v1/living-assistant/demo/:scenarioName
+GET  /api/v1/living-assistant/capsules
 ```
 
 ### Growth & Observability

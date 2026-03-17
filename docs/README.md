@@ -10,21 +10,22 @@ If you only have a few minutes, read in this order:
 2. [Champion Agent System](CHAMPION_AGENT_SYSTEM.md) — champion-level blueprint for turning Personal Butler into a living BNB-native assistant.
 3. [Champion Demo Story](CHAMPION_DEMO_STORY.md) — judge-facing story, wow moments, and demo strategy for winning the room.
 4. [Living Assistant MVP Plan](LIVING_ASSISTANT_MVP_PLAN.md) — concrete implementation plan for Signal Radar, Contact Policy, and Voice Brief.
-5. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md) — the current roadmap for aligning Personal Butler with Binance official open skills.
-5. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md) — fastest way to understand the flagship strategy module.
-6. [Arbitrage Module Spec v0](ARBITRAGE_MODULE_SPEC.md) — the first flagship strategy-module definition for the BN ecosystem direction.
-7. [Arbitrage Module Tasks](ARBITRAGE_MODULE_TASKS.md) — staged execution plan for turning the spec into a demoable module path.
-8. [Arbitrage Module Contract](ARBITRAGE_MODULE_CONTRACT.md) — product-facing request / candidate / decision / execution contract.
-9. [Arbitrage Skill Mapping](ARBITRAGE_SKILL_MAPPING.md) — how the module builds on Binance official open skills and current internal anchors.
-10. [Arbitrage Adapter Plan](ARBITRAGE_ADAPTER_PLAN.md) — normalized adapter-layer plan for official-skill integration.
-11. [Arbitrage Output Examples](ARBITRAGE_OUTPUT_EXAMPLES.md) — product-facing example payloads for key module outcomes.
-12. [Arbitrage Decision Reasons](ARBITRAGE_DECISION_REASONS.md) — normalized reason-code taxonomy for explainable decisions.
-13. [Arbitrage Implementation Gap](ARBITRAGE_IMPLEMENTATION_GAP.md) — what already exists vs what still needs layering.
-14. [Arbitrage Demo Script](ARBITRAGE_DEMO_SCRIPT.md) — judge-facing walkthrough for presenting the module clearly.
-15. [Personal Butler Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md) — shortest path to the trust and communication layer.
-16. [Agent-Comm V2 Design](AGENT_COMM_V2_DESIGN.md) — implementation-oriented protocol design.
-17. [Personal Butler Operations Guide](ALPHAOS_OPERATIONS.md) — current operator runbook for the execution stack.
-18. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md) — battle-tested deployment flow.
+5. [Living Assistant Demo Runner](LIVING_ASSISTANT_DEMO_RUNNER.md) — 2-minute hands-on command flow for judges.
+6. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md) — the current roadmap for aligning Personal Butler with Binance official open skills.
+7. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md) — fastest way to understand the flagship strategy module.
+8. [Arbitrage Module Spec v0](ARBITRAGE_MODULE_SPEC.md) — the first flagship strategy-module definition for the BN ecosystem direction.
+9. [Arbitrage Module Tasks](ARBITRAGE_MODULE_TASKS.md) — staged execution plan for turning the spec into a demoable module path.
+10. [Arbitrage Module Contract](ARBITRAGE_MODULE_CONTRACT.md) — product-facing request / candidate / decision / execution contract.
+11. [Arbitrage Skill Mapping](ARBITRAGE_SKILL_MAPPING.md) — how the module builds on Binance official open skills and current internal anchors.
+12. [Arbitrage Adapter Plan](ARBITRAGE_ADAPTER_PLAN.md) — normalized adapter-layer plan for official-skill integration.
+13. [Arbitrage Output Examples](ARBITRAGE_OUTPUT_EXAMPLES.md) — product-facing example payloads for key module outcomes.
+14. [Arbitrage Decision Reasons](ARBITRAGE_DECISION_REASONS.md) — normalized reason-code taxonomy for explainable decisions.
+15. [Arbitrage Implementation Gap](ARBITRAGE_IMPLEMENTATION_GAP.md) — what already exists vs what still needs layering.
+16. [Arbitrage Demo Script](ARBITRAGE_DEMO_SCRIPT.md) — judge-facing walkthrough for presenting the module clearly.
+17. [Personal Butler Agent-Comm One Pager](AGENT_COMM_ONE_PAGER.md) — shortest path to the trust and communication layer.
+18. [Agent-Comm V2 Design](AGENT_COMM_V2_DESIGN.md) — implementation-oriented protocol design.
+19. [Personal Butler Operations Guide](ALPHAOS_OPERATIONS.md) — current operator runbook for the execution stack.
+20. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md) — battle-tested deployment flow.
 
 ---
 
@@ -90,10 +91,11 @@ Read:
 2. [Champion Agent System](CHAMPION_AGENT_SYSTEM.md)
 3. [Champion Demo Story](CHAMPION_DEMO_STORY.md)
 4. [Living Assistant MVP Plan](LIVING_ASSISTANT_MVP_PLAN.md)
-5. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md)
-6. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md)
-7. [Arbitrage Demo Script](ARBITRAGE_DEMO_SCRIPT.md)
-8. [Judge One-Pager](JUDGE_ONE_PAGER.md)
+5. [Living Assistant Demo Runner](LIVING_ASSISTANT_DEMO_RUNNER.md)
+6. [BNB Skills Compatibility Plan](BNB_SKILLS_COMPATIBILITY_PLAN.md)
+7. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md)
+8. [Arbitrage Demo Script](ARBITRAGE_DEMO_SCRIPT.md)
+9. [Judge One-Pager](JUDGE_ONE_PAGER.md)
 
 ### Path B — protocol engineer
 
@@ -109,17 +111,18 @@ Read:
 Read:
 
 1. [Arbitrage One Pager](ARBITRAGE_ONE_PAGER.md)
-2. [Arbitrage Module Contract](ARBITRAGE_MODULE_CONTRACT.md)
-3. [Arbitrage Skill Mapping](ARBITRAGE_SKILL_MAPPING.md)
-4. [Arbitrage Adapter Plan](ARBITRAGE_ADAPTER_PLAN.md)
-5. [Arbitrage Output Examples](ARBITRAGE_OUTPUT_EXAMPLES.md)
-6. [Arbitrage Decision Reasons](ARBITRAGE_DECISION_REASONS.md)
-7. [Arbitrage Implementation Gap](ARBITRAGE_IMPLEMENTATION_GAP.md)
-8. [Arbitrage Module Tasks](ARBITRAGE_MODULE_TASKS.md)
-9. [Personal Butler Operations Guide](ALPHAOS_OPERATIONS.md)
-10. [Agent-Comm V2 Operations](AGENT_COMM_V2_OPERATIONS.md)
-11. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
-12. [OpenClaw Discovery Playbook](OPENCLAW_DISCOVERY_PLAYBOOK.md)
+2. [Living Assistant Demo Runner](LIVING_ASSISTANT_DEMO_RUNNER.md)
+3. [Arbitrage Module Contract](ARBITRAGE_MODULE_CONTRACT.md)
+4. [Arbitrage Skill Mapping](ARBITRAGE_SKILL_MAPPING.md)
+5. [Arbitrage Adapter Plan](ARBITRAGE_ADAPTER_PLAN.md)
+6. [Arbitrage Output Examples](ARBITRAGE_OUTPUT_EXAMPLES.md)
+7. [Arbitrage Decision Reasons](ARBITRAGE_DECISION_REASONS.md)
+8. [Arbitrage Implementation Gap](ARBITRAGE_IMPLEMENTATION_GAP.md)
+9. [Arbitrage Module Tasks](ARBITRAGE_MODULE_TASKS.md)
+10. [Personal Butler Operations Guide](ALPHAOS_OPERATIONS.md)
+11. [Agent-Comm V2 Operations](AGENT_COMM_V2_OPERATIONS.md)
+12. [Production Deployment Guide](AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
+13. [OpenClaw Discovery Playbook](OPENCLAW_DISCOVERY_PLAYBOOK.md)
 
 ---
 

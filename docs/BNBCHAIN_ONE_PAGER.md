@@ -8,11 +8,12 @@ It is designed around a simple belief:
 
 > useful AI agents should not just chat — they should have identity, trusted communication, and a real execution layer.
 
-Today, the repository combines three working pieces:
+Today, the repository combines four working pieces:
 
 1. **Agent identity + trusted communication** via Agent-Comm
 2. **Skill-oriented runtime** for reusable agent capabilities
 3. **Execution-ready workflows** for discovery, evaluation, simulation, execution, and reporting
+4. **Living Assistant loop** for proactive signal sensing, interruption policy, and one-breath micro-brief delivery
 
 In short: **Personal Butler is trying to become practical agent infrastructure, not just an AI demo.**
 
@@ -20,7 +21,7 @@ In short: **Personal Butler is trying to become practical agent infrastructure, 
 
 ## Why it fits BNB Chain
 
-BNB Chain is one of the best environments for turning agents into real products because it naturally rewards three things this project already cares about:
+BNB Chain is one of the best environments for turning agents into real products because it naturally rewards four things this project already cares about:
 
 ### 1. High-frequency, execution-heavy use cases
 
@@ -60,6 +61,18 @@ The harder and more valuable problem is the infrastructure between them:
 - how operators know whether the system is trustworthy
 
 That is exactly where Personal Butler is strongest.
+
+### 4. Proactive assistant behavior is the missing layer in many current agent stacks
+
+Many projects can fetch data or run scripts, but far fewer can decide **if / when / how** to interrupt a real person.
+
+The Living Assistant layer closes that gap through a reusable:
+
+```text
+sense → judge → brief
+```
+
+pattern that is especially valuable for fast-moving BNB ecosystem events.
 
 ---
 
@@ -111,6 +124,15 @@ That means the project already thinks in terms of:
 - operator feedback
 
 This is the difference between “agent theater” and “agent operations”.
+
+### Living Assistant: proactive ecosystem-aware agent
+
+A new MVP layer now makes Personal Butler proactive instead of purely reactive.
+
+- **Signal Radar** senses BNB ecosystem events before the user asks and normalizes them into `NormalizedSignal`.
+- **Contact Policy** decides whether and how to interrupt the user with a 6-level attention ladder (`silent` → `call_escalation`), plus quiet-hours degradation, rate limiting, and watchlist relevance checks.
+- **Voice Brief** delivers human-like One-Breath micro-briefings (max 15 seconds, max 3 sentences, `zh` / `en`) with protocol validation.
+- **Demo mode** keeps the full evaluation loop paper-safe while still providing credible demonstrations through replayable scenarios and capsules.
 
 ---
 
@@ -222,7 +244,9 @@ If developed well, Personal Butler can become a **BNB Chain-friendly agent infra
 If you want to evaluate the project quickly, read these next:
 
 1. [README](../README.md)
-2. [Agent-Comm One Pager](./AGENT_COMM_ONE_PAGER.md)
-3. [Judge One-Pager](./JUDGE_ONE_PAGER.md)
-4. [AlphaOS Operations Guide](./ALPHAOS_OPERATIONS.md)
-5. [Agent-Comm V2 Design](./AGENT_COMM_V2_DESIGN.md)
+2. [Champion Demo Story](./CHAMPION_DEMO_STORY.md)
+3. [Living Assistant MVP Plan](./LIVING_ASSISTANT_MVP_PLAN.md)
+4. [Agent-Comm One Pager](./AGENT_COMM_ONE_PAGER.md)
+5. [Judge One-Pager](./JUDGE_ONE_PAGER.md)
+6. [AlphaOS Operations Guide](./ALPHAOS_OPERATIONS.md)
+7. [Agent-Comm V2 Design](./AGENT_COMM_V2_DESIGN.md)

@@ -1,5 +1,23 @@
 # Personal Butler 执行能力一页说明
 
+## 0) 真正的差异化：主动生活助手
+
+在当前仓库里，Living Assistant 已经从蓝图变成可运行能力（Phase 1-5 全部落地）：
+
+1. 不是等用户问，而是主动感知 BNB 生态信号（Signal Radar），并统一归一化为 `NormalizedSignal`。
+2. 通过 6 级注意力阶梯决定是否打扰用户（`silent` → `call_escalation`），内置 quiet hours 降级、频率限制、watchlist 相关性判断。
+3. 采用微语音简报协议（One-Breath）：15 秒内、3 句话内，支持中英双语（`zh/en`）。
+4. 完整 demo-safe 评估链路已实现：`signal -> policy -> brief`，可在 paper-safe 模式下稳定演示判断质量。
+5. API 路由已上线，可直接评测：
+
+```text
+POST /api/v1/living-assistant/evaluate
+GET  /api/v1/living-assistant/demo/:scenarioName
+GET  /api/v1/living-assistant/capsules
+```
+
+---
+
 ## 1) 我们在解决什么长期问题
 
 DeFi 里最稀缺的不是“策略想法”，而是**可信执行**：
@@ -94,11 +112,12 @@ riskAdjustedNetEdgeBps >= minNetEdgeBps(mode)
 
 ## 6) 对 BNB Chain / 生态伙伴的价值
 
-如果这套执行层跑通，带来的不是单个策略收益，而是三层增量：
+如果这套执行层跑通，带来的不是单个策略收益，而是四层增量：
 
 1. **基础设施层**：验证当前执行底座在真实策略循环里的稳定性与可用性。
 2. **开发者层**：给后续 builder 提供可复用的 skill runtime 模板（可插拔策略、统一风控、统一观测）。
 3. **市场层**：把“发现 alpha”升级为“兑现 alpha + 可传播 alpha”，提升生态信息透明度和开发者信心。
+4. **体验 / 模式层**：Living Assistant（Signal Radar + Contact Policy + Voice Brief + demo-safe 链路）已形成可复用范式，帮助更多 BNB agent 项目补齐“主动感知 -> 判断 -> 联系用户”的产品体验层。
 
 对于 BNB Chain 叙事来说，重点不是“某个脚本跑通了”，而是：**一套可被复用、可被验证、可被继续扩展的 agent 执行底座正在形成。**
 

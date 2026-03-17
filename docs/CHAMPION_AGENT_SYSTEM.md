@@ -522,35 +522,38 @@ The emotional takeaway should be:
 
 ## 10. MVP to champion roadmap
 
-## Stage 1 — Already landed / landing
+## Stage 1 — Landed (Living Assistant MVP + execution baseline)
 
 - arbitrage contract
 - decision taxonomy
 - adapter-backed normalized contexts
 - paper-mode judge demo flow
+- signal radar with normalized events (`NormalizedSignal`)
+- contact policy engine with 6-level attention ladder (`silent` → `call_escalation`)
+- one-breath voice brief generation (`zh` / `en`)
+- loop orchestration (`signal -> policy -> brief`) with `demoMode`
+- delivery adapters (`Telegram` + webhook)
+- API routes: `/api/v1/living-assistant/evaluate`, `/api/v1/living-assistant/demo/:scenarioName`, `/api/v1/living-assistant/capsules`
+- demo scenario fixtures (`proactive-arbitrage-alert`, `quiet-hours-downgrade`, `critical-risk-escalation`)
+- signal capsule fixtures for replayable demos
 
-## Stage 2 — Near-term champion upgrades
+## Stage 2 — Next upgrades (from MVP to production-readiness)
 
+- live API polling integration
+  - Binance announcements
+  - Binance Square
+- real TTS audio generation
+- digest batching scheduler
 - second-batch enrichment adapters
   - `query-address-info`
   - `trading-signal`
-- stronger relevance / interruption rules
-- voice brief generation path
-- digest vs interrupt routing
 
-## Stage 3 — Human-contact breakthrough
+## Stage 3 — Advanced frontier
 
-- assistant contact policy engine
-- short-form voice escalation flow
-- optional telephony bridge design
-- reply handling for voice-driven follow-up
-
-## Stage 4 — Ecosystem-native closure
-
-- Square-ready summary package
-- replayable event capsules
-- multi-module assistant behavior beyond arbitrage
-- public-facing “living assistant” narrative and demo
+- telephony / SIP bridge
+- multi-user support
+- persistent user preference storage
+- Square-ready summary packaging
 
 ---
 
