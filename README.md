@@ -183,6 +183,7 @@ Start here:
 - [BNB Chain One Pager](docs/BNBCHAIN_ONE_PAGER.md)
 - [BNB Skills Compatibility Plan](docs/BNB_SKILLS_COMPATIBILITY_PLAN.md)
 - [Arbitrage Module Spec v0](docs/ARBITRAGE_MODULE_SPEC.md)
+- [Arbitrage Module Tasks](docs/ARBITRAGE_MODULE_TASKS.md)
 - [Personal Butler Agent-Comm One Pager](docs/AGENT_COMM_ONE_PAGER.md)
 - [Agent-Comm V2 Design](docs/AGENT_COMM_V2_DESIGN.md)
 - [Production Deployment Guide](docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md)
