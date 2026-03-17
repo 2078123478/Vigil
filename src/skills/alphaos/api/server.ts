@@ -1955,7 +1955,7 @@ export function createServer(
 
   app.use("/api/v1", requireApiAuth);
 
-  app.post("/api/v1/living-assistant/evaluate", (req, res) => {
+  app.post("/api/v1/living-assistant/evaluate", async (req, res) => {
     const payload = isRecord(req.body) ? req.body : {};
     if (!("signal" in payload)) {
       res.status(400).json({ error: "signal is required" });
@@ -1977,15 +1977,17 @@ export function createServer(
     const policyConfig = mergeLivingAssistantPolicyConfig(payload.policyConfig);
     const demoMode = typeof payload.demoMode === "boolean" ? payload.demoMode : true;
 
-    res.json(runLivingAssistantLoop({
-      signal,
-      userContext,
-      policyConfig,
-      demoMode,
-    }));
+    res.json(
+      await runLivingAssistantLoop({
+        signal,
+        userContext,
+        policyConfig,
+        demoMode,
+      }),
+    );
   });
 
-  app.get("/api/v1/living-assistant/demo/:scenarioName", (req, res) => {
+  app.get("/api/v1/living-assistant/demo/:scenarioName", async (req, res) => {
     const scenarioName = String(req.params.scenarioName ?? "").trim();
     if (!scenarioName) {
       res.status(400).json({ error: "scenarioName is required" });
@@ -1996,7 +1998,7 @@ export function createServer(
       const scenario = loadLivingAssistantDemoScenario(scenarioName);
       const policyConfig = mergeLivingAssistantPolicyConfig(scenario.policyConfig);
       res.json(
-        runLivingAssistantLoop({
+        await runLivingAssistantLoop({
           signal: scenario.signal,
           userContext: scenario.userContext,
           policyConfig,

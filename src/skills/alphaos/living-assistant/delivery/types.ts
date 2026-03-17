@@ -1,4 +1,5 @@
 import type { AttentionLevel, ContactDecision } from "../contact-policy";
+import type { TTSResult } from "../tts";
 import type { VoiceBrief } from "../voice-brief";
 
 export type TelegramPriority = "normal" | "high" | "critical";
@@ -20,6 +21,9 @@ export interface TelegramDeliveryPayload {
   priority: TelegramPriority;
   message: string;
   briefText?: string;
+  audioBase64?: string; // base64-encoded audio for voice message
+  audioFormat?: string; // 'mp3', 'wav', etc.
+  audioDurationSeconds?: number;
   inlineButtons?: TelegramInlineButton[];
   followUpPlan?: TelegramFollowUpPlan;
   metadata: {
@@ -38,4 +42,5 @@ export interface WebhookNotifierPayload {
 export interface DeliveryAdapterInput {
   decision: ContactDecision;
   brief?: VoiceBrief;
+  audio?: TTSResult;
 }

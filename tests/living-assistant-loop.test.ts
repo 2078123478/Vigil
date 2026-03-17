@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultContactPolicyConfig } from "../src/skills/alphaos/living-assistant/contact-policy";
 import type { UserContext } from "../src/skills/alphaos/living-assistant/contact-policy";
 import { runLivingAssistantLoop } from "../src/skills/alphaos/living-assistant/loop";
 import { loadSignalCapsuleFixture, normalizeSignal } from "../src/skills/alphaos/living-assistant/signal-radar";
+import type { TTSProvider, TTSResult } from "../src/skills/alphaos/living-assistant/tts";
 
 function buildUserContext(overrides?: Partial<UserContext>): UserContext {
   return {
@@ -19,7 +20,7 @@ function buildUserContext(overrides?: Partial<UserContext>): UserContext {
 }
 
 describe("living assistant loop", () => {
-  it("chains signal normalization to policy evaluation and brief generation", () => {
+  it("chains signal normalization to policy evaluation and brief generation", async () => {
     const signal = normalizeSignal({
       kind: "binance_announcement",
       title: "ETH listing path update",
@@ -31,7 +32,7 @@ describe("living assistant loop", () => {
       detectedAt: "2026-03-17T08:00:00.000Z",
     });
 
-    const output = runLivingAssistantLoop({
+    const output = await runLivingAssistantLoop({
       signal,
       userContext: buildUserContext(),
       policyConfig: defaultContactPolicyConfig,
@@ -44,7 +45,7 @@ describe("living assistant loop", () => {
     expect(output.deliveryChannel).toBe("telegram");
   });
 
-  it("returns the full decision chain but never marks delivered in demo mode", () => {
+  it("returns the full decision chain but never marks delivered in demo mode", async () => {
     const signal = normalizeSignal({
       kind: "token_risk_alert",
       tokenAddress: "0x1111111111111111111111111111111111111111",
@@ -53,7 +54,7 @@ describe("living assistant loop", () => {
       detectedAt: "2026-03-17T08:30:00.000Z",
     });
 
-    const output = runLivingAssistantLoop({
+    const output = await runLivingAssistantLoop({
       signal,
       userContext: buildUserContext(),
       policyConfig: defaultContactPolicyConfig,
@@ -66,11 +67,11 @@ describe("living assistant loop", () => {
     expect(output.delivered).toBe(false);
   });
 
-  it("runs end-to-end from a sample signal capsule", () => {
+  it("runs end-to-end from a sample signal capsule", async () => {
     const [signal] = loadSignalCapsuleFixture("arbitrage-opportunity-eth-usdc.json");
     expect(signal).toBeDefined();
 
-    const output = runLivingAssistantLoop({
+    const output = await runLivingAssistantLoop({
       signal: signal!,
       userContext: buildUserContext(),
       policyConfig: defaultContactPolicyConfig,
@@ -79,6 +80,99 @@ describe("living assistant loop", () => {
     expect(output.signal.source).toBe("market_opportunity");
     expect(output.decision.attentionLevel).toBe("voice_brief");
     expect(output.brief?.protocolCompliant).toBe(true);
+    expect(output.delivered).toBe(true);
+  });
+
+  it("loop with mock TTSProvider produces audio in output", async () => {
+    const signal = normalizeSignal({
+      kind: "binance_announcement",
+      title: "ETH listing path update",
+      body: "Listing details refreshed for ETH/USDC.",
+      type: "new_listing",
+      pair: "ETH/USDC",
+      urgency: "high",
+      relevanceHint: "likely_relevant",
+      detectedAt: "2026-03-17T08:00:00.000Z",
+    });
+
+    const mockAudio: TTSResult = {
+      audio: Buffer.from("audio-binary"),
+      format: "mp3",
+      durationSeconds: 1.2,
+      provider: "mock-tts",
+      generatedAt: "2026-03-17T09:00:00.000Z",
+    };
+    const synthesize = vi.fn(async () => mockAudio);
+    const ttsProvider: TTSProvider = {
+      name: "mock-tts",
+      synthesize,
+    };
+
+    const output = await runLivingAssistantLoop({
+      signal,
+      userContext: buildUserContext(),
+      policyConfig: defaultContactPolicyConfig,
+      ttsProvider,
+      ttsOptions: { voice: "alloy", format: "mp3" },
+    });
+
+    expect(output.brief).toBeDefined();
+    expect(synthesize).toHaveBeenCalledTimes(1);
+    expect(output.audio).toEqual(mockAudio);
+  });
+
+  it("loop without TTSProvider still works and has no audio", async () => {
+    const signal = normalizeSignal({
+      kind: "binance_announcement",
+      title: "ETH listing path update",
+      body: "Listing details refreshed for ETH/USDC.",
+      type: "new_listing",
+      pair: "ETH/USDC",
+      urgency: "high",
+      relevanceHint: "likely_relevant",
+      detectedAt: "2026-03-17T08:00:00.000Z",
+    });
+
+    const output = await runLivingAssistantLoop({
+      signal,
+      userContext: buildUserContext(),
+      policyConfig: defaultContactPolicyConfig,
+    });
+
+    expect(output.decision.attentionLevel).toBe("voice_brief");
+    expect(output.brief).toBeDefined();
+    expect(output.audio).toBeUndefined();
+  });
+
+  it("loop with failing TTSProvider still completes and leaves audio undefined", async () => {
+    const signal = normalizeSignal({
+      kind: "binance_announcement",
+      title: "ETH listing path update",
+      body: "Listing details refreshed for ETH/USDC.",
+      type: "new_listing",
+      pair: "ETH/USDC",
+      urgency: "high",
+      relevanceHint: "likely_relevant",
+      detectedAt: "2026-03-17T08:00:00.000Z",
+    });
+
+    const ttsProvider: TTSProvider = {
+      name: "mock-tts",
+      synthesize: vi.fn(async () => {
+        throw new Error("provider unavailable");
+      }),
+    };
+
+    const output = await runLivingAssistantLoop({
+      signal,
+      userContext: buildUserContext(),
+      policyConfig: defaultContactPolicyConfig,
+      ttsProvider,
+    });
+
+    expect(output.decision.attentionLevel).toBe("voice_brief");
+    expect(output.brief).toBeDefined();
+    expect(output.audio).toBeUndefined();
     expect(output.delivered).toBe(true);
   });
 });

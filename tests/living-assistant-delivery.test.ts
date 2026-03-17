@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AttentionLevel, ContactDecision } from "../src/skills/alphaos/living-assistant/contact-policy";
+import type { TTSResult } from "../src/skills/alphaos/living-assistant/tts";
 import type { VoiceBrief } from "../src/skills/alphaos/living-assistant/voice-brief";
 import { formatTelegramDelivery } from "../src/skills/alphaos/living-assistant/delivery/telegram-adapter";
 import { formatWebhookDelivery } from "../src/skills/alphaos/living-assistant/delivery/webhook-adapter";
@@ -44,6 +45,17 @@ function buildBrief(overrides?: Partial<VoiceBrief>): VoiceBrief {
   };
 }
 
+function buildAudio(overrides?: Partial<TTSResult>): TTSResult {
+  return {
+    audio: Buffer.from("voice-audio-binary"),
+    format: "mp3",
+    durationSeconds: 1.5,
+    provider: "mock-tts",
+    generatedAt: "2026-03-17T09:01:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("living assistant delivery adapters", () => {
   it("formats Telegram payload for text_nudge", () => {
     const payload = formatTelegramDelivery(buildDecision("text_nudge"), buildBrief());
@@ -58,33 +70,42 @@ describe("living assistant delivery adapters", () => {
 
   it("formats Telegram payload for voice_brief", () => {
     const brief = buildBrief();
-    const payload = formatTelegramDelivery(buildDecision("voice_brief"), brief);
+    const payload = formatTelegramDelivery(buildDecision("voice_brief"), brief, buildAudio());
 
     expect(payload).not.toBeNull();
     expect(payload?.attentionLevel).toBe("voice_brief");
     expect(payload?.message).toContain("Actionable update:");
     expect(payload?.briefText).toBe(brief.text);
     expect(payload?.priority).toBe("high");
+    expect(payload?.audioFormat).toBe("mp3");
+    expect(payload?.audioDurationSeconds).toBe(1.5);
+    expect(payload?.audioBase64).toBe(Buffer.from("voice-audio-binary").toString("base64"));
   });
 
   it("formats Telegram payload for strong_interrupt", () => {
-    const payload = formatTelegramDelivery(buildDecision("strong_interrupt"), buildBrief());
+    const payload = formatTelegramDelivery(buildDecision("strong_interrupt"), buildBrief(), buildAudio());
 
     expect(payload).not.toBeNull();
     expect(payload?.attentionLevel).toBe("strong_interrupt");
     expect(payload?.message).toContain("Strong interrupt:");
     expect(payload?.briefText).toBeDefined();
     expect(payload?.inlineButtons?.length).toBeGreaterThan(0);
+    expect(payload?.audioFormat).toBe("mp3");
+    expect(payload?.audioDurationSeconds).toBe(1.5);
+    expect(payload?.audioBase64).toBe(Buffer.from("voice-audio-binary").toString("base64"));
   });
 
   it("formats Telegram payload for call_escalation", () => {
-    const payload = formatTelegramDelivery(buildDecision("call_escalation"), buildBrief());
+    const payload = formatTelegramDelivery(buildDecision("call_escalation"), buildBrief(), buildAudio());
 
     expect(payload).not.toBeNull();
     expect(payload?.attentionLevel).toBe("call_escalation");
     expect(payload?.message).toContain("CRITICAL");
     expect(payload?.priority).toBe("critical");
     expect(payload?.briefText).toBeDefined();
+    expect(payload?.audioBase64).toBeUndefined();
+    expect(payload?.audioFormat).toBeUndefined();
+    expect(payload?.audioDurationSeconds).toBeUndefined();
     expect(payload?.followUpPlan).toEqual({
       intervalMinutes: 2,
       maxAttempts: 3,

@@ -1,4 +1,5 @@
 import type { AttentionLevel, ContactDecision } from "../contact-policy";
+import type { TTSResult } from "../tts";
 import type { VoiceBrief } from "../voice-brief";
 import type {
   TelegramDeliveryPayload,
@@ -37,9 +38,25 @@ function escalationFollowUpPlan(): TelegramFollowUpPlan {
   };
 }
 
+function withAudioPayload(audio: TTSResult | undefined): Pick<
+  TelegramDeliveryPayload,
+  "audioBase64" | "audioFormat" | "audioDurationSeconds"
+> {
+  if (!audio) {
+    return {};
+  }
+
+  return {
+    audioBase64: audio.audio.toString("base64"),
+    audioFormat: audio.format,
+    audioDurationSeconds: audio.durationSeconds,
+  };
+}
+
 export function formatTelegramDelivery(
   decision: ContactDecision,
   brief?: VoiceBrief,
+  audio?: TTSResult,
 ): TelegramDeliveryPayload | null {
   if (!decision.shouldContact || decision.attentionLevel === "silent" || decision.attentionLevel === "digest") {
     return null;
@@ -67,6 +84,7 @@ export function formatTelegramDelivery(
       priority: toPriority(decision.attentionLevel),
       message: `Actionable update: ${decision.reason}`,
       briefText: briefTextOrFallback(brief, decision),
+      ...withAudioPayload(audio),
       metadata: {
         shouldContact: decision.shouldContact,
         reason: decision.reason,
@@ -83,6 +101,7 @@ export function formatTelegramDelivery(
       priority: toPriority(decision.attentionLevel),
       message: `Strong interrupt: ${decision.reason}`,
       briefText: briefTextOrFallback(brief, decision),
+      ...withAudioPayload(audio),
       inlineButtons: toInlineButtons(decision),
       metadata: {
         shouldContact: decision.shouldContact,
