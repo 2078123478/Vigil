@@ -425,6 +425,50 @@ function buildTriagePrompt(input: SignalTriageInput): string {
   ].join("\n");
 }
 
+const BATCH_SIZE = 20;
+const TRIAGE_TIMEOUT_MS = 60_000;
+
+async function triageBatch(
+  batchSignals: NormalizedSignal[],
+  input: SignalTriageInput,
+  apiKey: string,
+  model: string | undefined,
+): Promise<{ triagedById: Map<string, TriagedSignal>; rawGroups: RawGroupDescriptor[] } | null> {
+  const batchInput: SignalTriageInput = {
+    ...input,
+    signals: batchSignals,
+  };
+
+  const completion = await chatCompletion(
+    [
+      {
+        role: "system",
+        content:
+          "You are a BNB ecosystem assistant triage engine. Review signal batches, decide user interruption priority, and group similar signals.",
+      },
+      {
+        role: "user",
+        content: buildTriagePrompt(batchInput),
+      },
+    ],
+    {
+      apiKey,
+      model,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      timeoutMs: TRIAGE_TIMEOUT_MS,
+    },
+  );
+
+  if (!completion) {
+    return null;
+  }
+
+  const signalIds = new Set(batchSignals.map((s) => s.signalId));
+  const parsed = parseLLMTriage(completion, signalIds);
+  return parsed.triagedById.size > 0 ? parsed : null;
+}
+
 export async function runSignalTriage(
   input: SignalTriageInput,
   options: LLMRuntimeOptions = {},
@@ -449,38 +493,34 @@ export async function runSignalTriage(
     return buildFallbackResult(input);
   }
 
-  const completion = await chatCompletion(
-    [
-      {
-        role: "system",
-        content:
-          "You are a BNB ecosystem assistant triage engine. Review signal batches, decide user interruption priority, and group similar signals.",
-      },
-      {
-        role: "user",
-        content: buildTriagePrompt(input),
-      },
-    ],
-    {
-      apiKey,
-      model: options.llmModel,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-    },
-  );
-
-  if (!completion) {
-    return buildFallbackResult(input);
-  }
-
   const signalById = new Map<string, NormalizedSignal>(input.signals.map((signal) => [signal.signalId, signal]));
-  const parsed = parseLLMTriage(completion, new Set(signalById.keys()));
-  if (parsed.triagedById.size === 0) {
+  const allTriagedById = new Map<string, TriagedSignal>();
+  const allRawGroups: RawGroupDescriptor[] = [];
+  let anyBatchSucceeded = false;
+
+  // Split into batches of BATCH_SIZE
+  for (let i = 0; i < input.signals.length; i += BATCH_SIZE) {
+    const batch = input.signals.slice(i, i + BATCH_SIZE);
+    const result = await triageBatch(batch, input, apiKey, options.llmModel);
+
+    if (result) {
+      anyBatchSucceeded = true;
+      for (const [id, item] of result.triagedById) {
+        allTriagedById.set(id, item);
+      }
+      allRawGroups.push(...result.rawGroups);
+    }
+    // If a batch fails, those signals will fallback to rule engine below
+  }
+
+  if (!anyBatchSucceeded) {
     return buildFallbackResult(input);
   }
 
-  const triaged = input.signals.map((signal) => parsed.triagedById.get(signal.signalId) ?? toFallbackTriagedSignal(input, signal));
-  const groups = buildGroups(triaged, parsed.rawGroups, signalById);
+  const triaged = input.signals.map(
+    (signal) => allTriagedById.get(signal.signalId) ?? toFallbackTriagedSignal(input, signal),
+  );
+  const groups = buildGroups(triaged, allRawGroups, signalById);
 
   return buildResult(triaged, groups, true);
 }
