@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultContactPolicyConfig, type ContactPolicyConfig, type UserContext } from "../src/skills/alphaos/living-assistant/contact-policy";
+import {
+  defaultContactPolicyConfig,
+  type ContactDecision,
+  type ContactPolicyConfig,
+  type UserContext,
+} from "../src/skills/alphaos/living-assistant/contact-policy";
 import { DigestBatchScheduler, type DigestBatch } from "../src/skills/alphaos/living-assistant/digest-batching";
 import {
   TelegramVoiceSender,
@@ -12,7 +17,7 @@ import {
   type VoiceRouteAttentionLevel,
   type VoiceRoutePolicy,
 } from "../src/skills/alphaos/living-assistant/delivery";
-import { runLivingAssistantLoop } from "../src/skills/alphaos/living-assistant/loop";
+import { runBatchTriage, runLivingAssistantLoop } from "../src/skills/alphaos/living-assistant/loop";
 import { normalizeSignal, pollBinanceAnnouncements, pollBinanceSquare, type NormalizedSignal } from "../src/skills/alphaos/living-assistant/signal-radar";
 import {
   createTTSProvider,
@@ -140,6 +145,12 @@ const CALL_ROUTE_PROFILE_OVERRIDES: Record<CallRouteProfile, Partial<VoiceRouteP
   "direct-call-only": {
     call_escalation: ["twilio_call", "aliyun_call"],
   },
+};
+const SIGNAL_URGENCY_RANK: Record<NormalizedSignal["urgency"], number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -933,6 +944,35 @@ function printDigestBatch(digest: DigestBatch, label: string): void {
   console.log(`Digest summary:\n${digest.text}`);
 }
 
+function buildDigestDecision(reason: string): ContactDecision {
+  return {
+    shouldContact: false,
+    attentionLevel: "digest",
+    channels: [],
+    reason,
+    suggestedActions: ["review_in_digest"],
+  };
+}
+
+function pickRepresentativeSignal(signals: NormalizedSignal[]): NormalizedSignal {
+  if (signals.length === 0) {
+    throw new Error("pickRepresentativeSignal requires at least one signal");
+  }
+
+  const sorted = [...signals].sort((a, b) => {
+    const byUrgency = SIGNAL_URGENCY_RANK[b.urgency] - SIGNAL_URGENCY_RANK[a.urgency];
+    if (byUrgency !== 0) {
+      return byUrgency;
+    }
+    const aTs = Date.parse(a.detectedAt);
+    const bTs = Date.parse(b.detectedAt);
+    const aValue = Number.isFinite(aTs) ? aTs : 0;
+    const bValue = Number.isFinite(bTs) ? bTs : 0;
+    return bValue - aValue;
+  });
+  return sorted[0];
+}
+
 async function runLoopScenario(
   scenario: LoopScenarioInput,
   runtime: DemoRuntime,
@@ -1054,6 +1094,12 @@ async function main(): Promise<void> {
   const scenarios = loadDemoScenarios();
   let runScenarios: LoopScenarioInput[] = [];
   let pollDurationMs: number | undefined;
+  let triageNotifyCount = 0;
+  let triageDigestCount = 0;
+  let triageSkipCount = 0;
+  let triageDigestQueued = 0;
+  let triageDigestQueueSize = 0;
+  let triageLLMUsed: boolean | undefined;
 
   if (cli.live) {
     const liveContext = resolveLiveContext(scenarios);
@@ -1125,16 +1171,95 @@ async function main(): Promise<void> {
       return;
     }
 
-    runScenarios = liveSignals.map((signal, index) => ({
-      name: `live-signal-${signal.source}-${index + 1}`,
-      description:
-        signal.source === "binance_square"
-          ? `Binance Square signal ${signal.signalId}`
-          : `Binance announcement signal ${signal.signalId}`,
-      signal,
-      userContext: liveContext.userContext,
-      policyConfig: liveContext.policyConfig,
-    }));
+    const livePolicyConfig: ContactPolicyConfig = {
+      ...defaultContactPolicyConfig,
+      ...(liveContext.policyConfig ?? {}),
+    };
+    const triage = await runBatchTriage(
+      liveSignals,
+      liveContext.userContext,
+      livePolicyConfig,
+      {
+        llmApiKey: readOptionalEnv("LLM_API_KEY") ?? readOptionalEnv("TTS_API_KEY"),
+        llmModel: readOptionalEnv("LLM_MODEL"),
+      },
+    );
+
+    triageNotifyCount = triage.notifyCount;
+    triageDigestCount = triage.digestCount;
+    triageSkipCount = triage.skipCount;
+    triageLLMUsed = triage.llmUsed;
+
+    console.log(
+      `Triage summary: ${liveSignals.length} signals -> ${triage.notifyCount} notify, ${triage.digestCount} digest, ${triage.skipCount} skip`,
+    );
+    console.log(`Triage engine: ${triage.llmUsed ? "llm" : "rules-fallback"}`);
+
+    const signalById = new Map<string, NormalizedSignal>(liveSignals.map((signal) => [signal.signalId, signal]));
+    const triagedById = new Map(triage.triaged.map((item) => [item.signalId, item]));
+    const groupedNotifySignalIds = new Set<string>();
+
+    runScenarios = [];
+    for (const group of triage.groups) {
+      const notifySignals = group.signals.filter((signal) => triagedById.get(signal.signalId)?.verdict === "notify");
+      if (notifySignals.length === 0) {
+        continue;
+      }
+
+      const representative = pickRepresentativeSignal(notifySignals);
+      runScenarios.push({
+        name: `live-group-${toSafeFileName(group.groupKey) || "notify"}`,
+        description: `Grouped notify (${notifySignals.length}): ${group.mergedTitle}`,
+        signal: representative,
+        userContext: liveContext.userContext,
+        policyConfig: liveContext.policyConfig,
+      });
+
+      for (const signal of notifySignals) {
+        groupedNotifySignalIds.add(signal.signalId);
+      }
+    }
+
+    for (const item of triage.triaged) {
+      const signal = signalById.get(item.signalId);
+      if (!signal) {
+        continue;
+      }
+
+      if (item.verdict === "notify") {
+        if (groupedNotifySignalIds.has(item.signalId)) {
+          continue;
+        }
+
+        runScenarios.push({
+          name: `live-signal-${signal.source}-${item.signalId}`,
+          description:
+            signal.source === "binance_square"
+              ? `Binance Square signal ${signal.signalId}`
+              : `Binance announcement signal ${signal.signalId}`,
+          signal,
+          userContext: liveContext.userContext,
+          policyConfig: liveContext.policyConfig,
+        });
+        continue;
+      }
+
+      if (item.verdict === "digest") {
+        const enqueueResult = digestScheduler.enqueue({
+          signal,
+          decision: buildDigestDecision(item.reason),
+          digestWindowMinutes: livePolicyConfig.digestWindowMinutes,
+        });
+        triageDigestQueued += 1;
+        triageDigestQueueSize = enqueueResult.queue.size;
+      }
+    }
+
+    if (triageDigestQueued > 0) {
+      const snapshot = digestScheduler.getSnapshot();
+      triageDigestQueueSize = snapshot.size;
+      console.log(`Digest queue: enqueued=${triageDigestQueued}, size=${snapshot.size}, nextFlushAt=${snapshot.nextFlushAt ?? "n/a"}`);
+    }
   } else {
     runScenarios = cli.send
       ? scenarios.filter((scenario) => scenario.name === SEND_FIXTURE_SCENARIO)
@@ -1156,10 +1281,10 @@ async function main(): Promise<void> {
   let deliveryAttempts = 0;
   let deliverySucceeded = 0;
   let deliveryFailed = 0;
-  let digestSignalsQueued = 0;
+  let digestSignalsQueued = triageDigestQueued;
   let digestFlushCount = 0;
   let digestSignalsFlushed = 0;
-  let digestQueueSize = 0;
+  let digestQueueSize = triageDigestQueueSize;
 
   for (const scenario of runScenarios) {
     console.log("");
