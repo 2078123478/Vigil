@@ -1,25 +1,9 @@
 import type { ChatCompletionOptions, Message } from "./types";
+import { asRecord, optionalText, type JsonRecord } from "./utils";
 
 const DEFAULT_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DEFAULT_MODEL = "qwen-plus";
 const DEFAULT_TIMEOUT_MS = 30_000;
-
-type JsonRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): JsonRecord | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as JsonRecord;
-}
-
-function optionalText(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 function parseBoolean(value: string | undefined): boolean | undefined {
   if (!value) {

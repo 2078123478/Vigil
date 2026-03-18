@@ -9,8 +9,7 @@ import type {
   TriageResult,
   TriagedSignal,
 } from "./types";
-
-type JsonRecord = Record<string, unknown>;
+import { asRecord, optionalText, type JsonRecord } from "./utils";
 
 interface RawGroupDescriptor {
   groupKey: string;
@@ -36,21 +35,6 @@ const ATTENTION_LEVELS = new Set<AttentionLevel>([
   "strong_interrupt",
   "call_escalation",
 ]);
-
-function asRecord(value: unknown): JsonRecord | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as JsonRecord;
-}
-
-function optionalText(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 function parseJsonObject(raw: string): JsonRecord | undefined {
   const direct = raw.trim();
@@ -104,8 +88,7 @@ function normalizeAttentionLevel(value: unknown): AttentionLevel | undefined {
 }
 
 function normalizeGroupKey(value: unknown): string | undefined {
-  const key = optionalText(value);
-  return key && key.length > 0 ? key : undefined;
+  return optionalText(value);
 }
 
 function defaultAttentionForVerdict(verdict: TriagedSignal["verdict"]): AttentionLevel {
@@ -299,6 +282,27 @@ function defaultMergedTitle(signals: NormalizedSignal[]): string {
   return `${signals.length} related signals`;
 }
 
+function nonSkipSignalIdsForGroup(groupKey: string, triaged: TriagedSignal[]): string[] {
+  return triaged
+    .filter((item) => item.groupKey === groupKey && item.verdict !== "skip")
+    .map((item) => item.signalId);
+}
+
+function uniqueGroupKeys(triaged: TriagedSignal[]): string[] {
+  return [...new Set(triaged.map((item) => item.groupKey).filter((item): item is string => Boolean(item)))];
+}
+
+function pickSignals(signalIds: string[], signalById: Map<string, NormalizedSignal>): NormalizedSignal[] {
+  const signals: NormalizedSignal[] = [];
+  for (const signalId of signalIds) {
+    const signal = signalById.get(signalId);
+    if (signal) {
+      signals.push(signal);
+    }
+  }
+  return signals;
+}
+
 function buildGroups(
   triaged: TriagedSignal[],
   rawGroups: RawGroupDescriptor[],
@@ -315,10 +319,7 @@ function buildGroups(
   >();
 
   for (const group of rawGroups) {
-    const fallbackSignalIds = triaged
-      .filter((item) => item.groupKey === group.groupKey && item.verdict !== "skip")
-      .map((item) => item.signalId);
-
+    const fallbackSignalIds = nonSkipSignalIdsForGroup(group.groupKey, triaged);
     const signalIds = [...new Set((group.signalIds.length > 0 ? group.signalIds : fallbackSignalIds))];
     if (signalIds.length === 0) {
       continue;
@@ -331,15 +332,13 @@ function buildGroups(
     });
   }
 
-  const triageGroupKeys = [...new Set(triaged.map((item) => item.groupKey).filter((item): item is string => Boolean(item)))];
+  const triageGroupKeys = uniqueGroupKeys(triaged);
   for (const groupKey of triageGroupKeys) {
     if (groupMap.has(groupKey)) {
       continue;
     }
 
-    const signalIds = triaged
-      .filter((item) => item.groupKey === groupKey && item.verdict !== "skip")
-      .map((item) => item.signalId);
+    const signalIds = nonSkipSignalIdsForGroup(groupKey, triaged);
 
     if (signalIds.length < 2) {
       continue;
@@ -352,13 +351,7 @@ function buildGroups(
 
   const groups: SignalGroup[] = [];
   for (const [groupKey, groupData] of groupMap.entries()) {
-    const signals: NormalizedSignal[] = [];
-    for (const signalId of groupData.signalIds) {
-      const signal = signalById.get(signalId);
-      if (signal) {
-        signals.push(signal);
-      }
-    }
+    const signals = pickSignals(groupData.signalIds, signalById);
 
     if (signals.length === 0) {
       continue;

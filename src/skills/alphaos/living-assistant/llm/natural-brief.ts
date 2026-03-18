@@ -30,9 +30,14 @@ function trimToSentenceLimit(text: string, language: "zh" | "en", maxSentences =
   if (sentences.length <= maxSentences) {
     return text;
   }
-  return language === "zh"
-    ? sentences.slice(0, maxSentences).join("")
-    : sentences.slice(0, maxSentences).join(" ");
+  if (language === "zh") {
+    return sentences.slice(0, maxSentences).join("");
+  }
+  return sentences.slice(0, maxSentences).join(" ");
+}
+
+function isWrappedInMatchingQuotes(text: string): boolean {
+  return (text.startsWith("\"") && text.endsWith("\"")) || (text.startsWith("'") && text.endsWith("'"));
 }
 
 function normalizeCompletionText(raw: string): string {
@@ -46,7 +51,7 @@ function normalizeCompletionText(raw: string): string {
     return fencedMatch[1].trim();
   }
 
-  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+  if (isWrappedInMatchingQuotes(trimmed)) {
     return trimmed.slice(1, -1).trim();
   }
 
