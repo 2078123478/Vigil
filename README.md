@@ -156,4 +156,4 @@ npm run demo:run
 
 ## License
 
-[Business Source License 1.1](LICENSE) — source available, commercial use requires authorization. Converts to Apache 2.0 on 2030-03-11.
+[MIT License](LICENSE)
