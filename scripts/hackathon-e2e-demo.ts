@@ -210,10 +210,28 @@ async function main(): Promise<void> {
   printLine("Demo override keeps the flow on Telegram with supported inline actions: act_now, defer_5m, ignore_once.");
 
   printHeader("🗣️ Step 4: Voice Brief Preview");
+  const naturalBriefText = await (async () => {
+    try {
+      const { generateNaturalBrief } = await import("../src/skills/alphaos/living-assistant/llm/natural-brief");
+      const text = await generateNaturalBrief(signal, demoPolicy.value, "zh");
+      if (text && text.trim()) {
+        printLine("Brief engine: LLM (natural)");
+        return text;
+      }
+    } catch {
+      // LLM unavailable, fall through to template
+    }
+    return null;
+  })();
+
   const briefPreview = measure(() => generateVoiceBrief(signal, demoPolicy.value));
+  const finalBriefText = naturalBriefText ?? briefPreview.value.text;
   printLine(`Generated brief in ${formatMs(briefPreview.ms)}`);
+  if (!naturalBriefText) {
+    printLine("Brief engine: template (fallback)");
+  }
   printLine(`Protocol compliant: ${briefPreview.value.protocolCompliant ? "yes" : "no"}`);
-  printLine(`Preview: ${briefPreview.value.text}`);
+  printLine(`Preview: ${finalBriefText}`);
 
   printHeader("🔊 Step 5: Create CosyVoice Provider");
   const ttsProvider = createTTSProvider({
@@ -239,10 +257,12 @@ async function main(): Promise<void> {
       ttsOptions: {
         voice: ttsVoice,
         format: "mp3",
+        language: "zh",
       },
       deliveryExecutor: {
         telegramSender,
       },
+      llmEnabled: true,
     }),
   );
   const loopOutput = loopRun.value;
