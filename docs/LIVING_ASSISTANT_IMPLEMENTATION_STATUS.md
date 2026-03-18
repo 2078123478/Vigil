@@ -249,7 +249,30 @@ Implemented:
 
 - Telegram inline keyboard buttons on `strong_interrupt` / `call_escalation` messages
 - callback_data format: `la:act_now`, `la:defer_5m`, `la:ignore_once`
-- callback query handler not yet implemented (buttons render but no server-side handling)
+
+### 3.10 Telegram Callback Handler
+
+Implemented:
+
+- `TelegramCallbackHandler` — server-side handler for inline button callbacks
+- `handleCallback()` — answers callback query + edits original message with status label
+- `startPolling()` / `stopPolling()` — long-polling `getUpdates` for `callback_query` events
+- Message context caching (chatId, messageId, originalText) from polling updates
+- Known actions: `act_now` → `[✅ Acknowledged]`, `defer_5m` → `[⏰ Deferred 5m]`, `ignore_once` → `[🔕 Ignored]`
+- Unknown `la:*` actions gracefully answered without editing
+- 7 tests covering all actions, unknown, missing params, network errors
+- Uses raw `fetch` (no external dependencies), same pattern as `telegram-voice-sender.ts`
+
+### 3.11 Hackathon E2E Demo Script
+
+Implemented:
+
+- `scripts/hackathon-e2e-demo.ts` — full 7-step end-to-end demo
+- Flow: load fixture → normalize signal → contact policy → voice brief → CosyVoice TTS → Telegram voice + inline buttons → callback polling → handle user response
+- Uses `critical-risk-escalation` fixture with `allowCallEscalation: false` override to route through `strong_interrupt` (Telegram inline buttons)
+- Per-phase timing output with emoji-decorated step headers
+- 60-second callback timeout with clean exit
+- Verified end-to-end: signal → CosyVoice voice → Telegram delivery → user clicks button → callback handled → message edited with status label
 
 ---
 
@@ -447,7 +470,19 @@ npm run demo:living-assistant -- --call --demo-delivery
 npm run demo:living-assistant -- --call
 ```
 
-### 7.6 DashScope Qwen TTS + call mode
+### 7.6 Hackathon E2E demo (CosyVoice + inline buttons + callback)
+
+```bash
+TTS_API_KEY=sk-... \
+TTS_VOICE=cosyvoice-v2-wilsen-078bd152fc744a33871a0c71b32a6025 \
+TELEGRAM_BOT_TOKEN=... \
+TELEGRAM_CHAT_ID=... \
+npx tsx scripts/hackathon-e2e-demo.ts
+```
+
+This runs the full loop: signal → policy → brief → CosyVoice TTS → Telegram voice + inline buttons → polls for button click → handles callback → exits.
+
+### 7.7 DashScope Qwen TTS + call mode
 
 ```bash
 TTS_PROVIDER=dashscope-qwen \
@@ -592,6 +627,7 @@ If someone still wants to inspect the system shape, these are the highest-value 
 ### Demo / operator entry
 
 - `scripts/living-assistant-demo.ts`
+- `scripts/hackathon-e2e-demo.ts`
 
 ### Core loop
 
@@ -601,6 +637,7 @@ If someone still wants to inspect the system shape, these are the highest-value 
 
 - `src/skills/alphaos/living-assistant/delivery/voice-orchestrator.ts`
 - `src/skills/alphaos/living-assistant/delivery/delivery-executor.ts`
+- `src/skills/alphaos/living-assistant/delivery/callback-handler.ts`
 
 ### TTS
 
@@ -631,7 +668,6 @@ The system is already substantial, but a few meaningful next steps remain.
 
 Most relevant pending/extendable areas:
 
-- **Telegram inline button callback handler** — buttons render on `strong_interrupt` / `call_escalation` but server-side handling of `la:act_now`, `la:defer_5m`, `la:ignore_once` is not yet implemented
 - **Second-batch adapters** — `query-address-info`, `trading-signal`, and other signal sources
 - **More production-style scheduling** around digest windows
 - **More advanced phone/voice interaction patterns**
