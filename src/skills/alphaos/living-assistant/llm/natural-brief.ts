@@ -115,23 +115,42 @@ function formatTargetContext(target: NaturalBriefTarget): string {
 }
 
 function buildPrompt(target: NaturalBriefTarget, decision: ContactDecision, language: "zh" | "en"): string {
+  const context = formatTargetContext(target);
+
+  if (language === "zh") {
+    return [
+      "你是小音，老大的私人 AI 助理。你刚刚监测到一条信号，需要用语音简报的方式告诉老大。",
+      "",
+      `注意力级别：${decision.attentionLevel}`,
+      `判断原因：${decision.reason}`,
+      "信号详情：",
+      context,
+      "",
+      "请用中文写一段语音简报，要求：",
+      "- 像真人助理跟老板汇报一样，口语化、自然、有紧迫感",
+      "- 严格 3 句话以内，15 秒能读完",
+      "- 第 1 句：具体发生了什么（哪个币、什么操作、关键数字）",
+      "- 第 2 句：为什么严重 / 跟老大有什么关系",
+      "- 第 3 句：建议老大现在做什么（具体动作）",
+      "- 禁止说"快去查看"、"请关注"这种废话，你必须把关键信息直接说出来",
+      "- 只输出纯文本，不要 markdown",
+    ].join("\n");
+  }
+
   return [
-    `Language: ${language}`,
     `Decision attentionLevel: ${decision.attentionLevel}`,
     `Decision reason: ${decision.reason}`,
     "Signal context:",
-    formatTargetContext(target),
+    context,
     "",
-    "Write a short voice brief in Xiaoyin style:",
-    "- energetic, natural, conversational — like a real assistant talking to her boss",
-    "- max 3 sentences, should fit in 15 seconds",
-    "- CRITICAL: you MUST include the specific facts from the signal (what happened, which token/pair, what data changed, what numbers matter)",
-    "- NEVER say vague things like '快去查' or '检查一下' without first telling the user WHAT happened",
-    "- sentence 1: what exactly happened (specific event, token, data)",
-    "- sentence 2: why it matters / how urgent it is",
-    "- sentence 3: one concrete actionable suggestion",
-    "- if grouped signals, summarize the key specifics instead of reading one by one",
-    "- output plain text only, no markdown",
+    "Write a short voice brief:",
+    "- natural, conversational, like a real assistant reporting to her boss",
+    "- max 3 sentences, fits in 15 seconds",
+    "- sentence 1: what exactly happened (specific token, action, key numbers)",
+    "- sentence 2: why it matters",
+    "- sentence 3: one concrete action to take now",
+    "- NEVER say vague things like 'go check' without telling WHAT happened first",
+    "- output plain text only",
   ].join("\n");
 }
 
@@ -151,12 +170,15 @@ export async function generateNaturalBrief(
     return fallback;
   }
 
+  const systemPrompt = language === "zh"
+    ? "你是小音，一个元气满满的 AI 助理。老大让你盯着 BNB 生态的动态，有重要事情要第一时间用语音简报汇报。你说话直接、有信息量、不废话。"
+    : "You are Xiaoyin, an upbeat AI assistant. Produce concise, natural voice briefs about crypto signals.";
+
   const completion = await chatCompletion(
     [
       {
         role: "system",
-        content:
-          "You are Xiaoyin, an upbeat AI assistant. Produce concise, natural voice briefs about crypto signals.",
+        content: systemPrompt,
       },
       {
         role: "user",
