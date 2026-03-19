@@ -434,6 +434,33 @@ function parseFirstBatchAdapterInputs(input: unknown): FirstBatchArbitrageAdapte
   return input as FirstBatchArbitrageAdapterInputs;
 }
 
+function dedupeSkillIds(items: string[]): string[] {
+  const normalized = items
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return Array.from(new Set(normalized));
+}
+
+function buildModuleSkillAttributionView(moduleResponse: ArbitrageModuleResponse) {
+  const requiredSkillsUsed = dedupeSkillIds(moduleResponse.skillUsage.required);
+  const enrichmentSkillsUsed = dedupeSkillIds(moduleResponse.skillUsage.enrichment);
+  const distributionSkillsUsed = dedupeSkillIds(moduleResponse.skillUsage.distribution);
+  const skillSources = dedupeSkillIds([
+    ...(moduleResponse.candidate?.skillSources ?? []),
+    ...requiredSkillsUsed,
+    ...enrichmentSkillsUsed,
+    ...distributionSkillsUsed,
+  ]);
+
+  return {
+    skillSources,
+    requiredSkillsUsed,
+    enrichmentSkillsUsed,
+    distributionSkillsUsed,
+    metadata: moduleResponse.skillUsage.metadata ?? null,
+  };
+}
+
 function buildJudgePaperModeDemoPayload(input: {
   requestedMode: "paper" | "live";
   executionMode: "paper" | "live";
@@ -442,6 +469,7 @@ function buildJudgePaperModeDemoPayload(input: {
   moduleResponse: ArbitrageModuleResponse;
 }) {
   const execution = input.moduleResponse.execution;
+  const skillAttribution = buildModuleSkillAttributionView(input.moduleResponse);
   const liveRequestDowngraded =
     input.liveRequestDowngradedForDemo
     || (input.requestedMode === "live" && input.effectiveMode === "paper");
@@ -526,6 +554,7 @@ function buildJudgePaperModeDemoPayload(input: {
           reasonCodes: [],
           liveExecutionAttempted: false,
         },
+    skillAttribution,
     keyReasonCodes: input.moduleResponse.decisionView.reasonCodes,
     keyBlockingReasonCodes: input.moduleResponse.decisionView.blockingReasonCodes,
     notes,
@@ -2290,9 +2319,11 @@ export function createServer(
         approveResult: result,
         compatibilityAdapters,
       });
+      const skillAttribution = buildModuleSkillAttributionView(moduleResponse);
       res.json({
         ...result,
         moduleResponse,
+        skillAttribution,
       });
     } catch (error) {
       handleDiscoveryError(res, error);
@@ -2332,6 +2363,7 @@ export function createServer(
         approveResult: result,
         compatibilityAdapters,
       });
+      const skillAttribution = buildModuleSkillAttributionView(moduleResponse);
       const demo = buildJudgePaperModeDemoPayload({
         requestedMode,
         executionMode,
@@ -2350,6 +2382,7 @@ export function createServer(
         modePolicy: "paper_mode_enforced",
         demoSafe: demo.demoSafe,
         moduleResponse,
+        skillAttribution,
         operatorSummary: demo.operatorSummary,
         judgeSummary: demo.judgeSummary,
         decisionSummary: demo.decisionSummary,

@@ -1,0 +1,147 @@
+{
+  "schemaVersion": "1.0",
+  "project": "vigil",
+  "phase": "phase-1-visibility",
+  "updatedAt": "2026-03-19",
+  "entries": [
+    {
+      "officialSkillId": "binance/spot",
+      "capability": "Spot market context for arbitrage candidate evaluation",
+      "stage": "market",
+      "status": "integrated",
+      "runtimeStatus": "runtime_wired",
+      "implementationPath": "src/skills/alphaos/module/adapters/market-context-spot.ts",
+      "outputVisibility": {
+        "status": "visible",
+        "surfaces": [
+          "/api/v1/discovery/sessions/:sessionId/approve.moduleResponse.marketContext.sourceSkill",
+          "/api/v1/discovery/sessions/:sessionId/approve.skillAttribution.requiredSkillsUsed",
+          "/api/v1/discovery/sessions/:sessionId/approve/paper-demo.demo.skillAttribution.requiredSkillsUsed"
+        ]
+      },
+      "notes": "First-batch arbitrage adapter."
+    },
+    {
+      "officialSkillId": "binance/assets",
+      "capability": "Balance readiness and pre-trade availability checks",
+      "stage": "readiness",
+      "status": "integrated",
+      "runtimeStatus": "runtime_wired",
+      "implementationPath": "src/skills/alphaos/module/adapters/readiness-assets.ts",
+      "outputVisibility": {
+        "status": "visible",
+        "surfaces": [
+          "/api/v1/discovery/sessions/:sessionId/approve.moduleResponse.readinessContext.sourceSkill",
+          "/api/v1/discovery/sessions/:sessionId/approve.skillAttribution.requiredSkillsUsed",
+          "/api/v1/discovery/sessions/:sessionId/approve/paper-demo.demo.skillAttribution.requiredSkillsUsed"
+        ]
+      },
+      "notes": "First-batch arbitrage adapter."
+    },
+    {
+      "officialSkillId": "binance-web3/query-token-info",
+      "capability": "Token metadata enrichment",
+      "stage": "enrichment",
+      "status": "integrated",
+      "runtimeStatus": "runtime_wired",
+      "implementationPath": "src/skills/alphaos/module/adapters/enrichment-token-info.ts",
+      "outputVisibility": {
+        "status": "visible",
+        "surfaces": [
+          "/api/v1/discovery/sessions/:sessionId/approve.moduleResponse.enrichmentContext.sourceSkills",
+          "/api/v1/discovery/sessions/:sessionId/approve.skillAttribution.enrichmentSkillsUsed",
+          "/api/v1/discovery/sessions/:sessionId/approve/paper-demo.demo.skillAttribution.enrichmentSkillsUsed"
+        ]
+      },
+      "notes": "First-batch arbitrage adapter."
+    },
+    {
+      "officialSkillId": "binance-web3/query-token-audit",
+      "capability": "Token risk and audit enrichment",
+      "stage": "enrichment",
+      "status": "integrated",
+      "runtimeStatus": "runtime_wired",
+      "implementationPath": "src/skills/alphaos/module/adapters/enrichment-token-audit.ts",
+      "outputVisibility": {
+        "status": "visible",
+        "surfaces": [
+          "/api/v1/discovery/sessions/:sessionId/approve.moduleResponse.enrichmentContext.sourceSkills",
+          "/api/v1/discovery/sessions/:sessionId/approve.skillAttribution.enrichmentSkillsUsed",
+          "/api/v1/discovery/sessions/:sessionId/approve/paper-demo.demo.skillAttribution.enrichmentSkillsUsed"
+        ]
+      },
+      "notes": "First-batch arbitrage adapter."
+    },
+    {
+      "officialSkillId": null,
+      "capability": "Binance Announcements signal ingestion",
+      "stage": "signal",
+      "status": "integrated",
+      "runtimeStatus": "runtime_wired",
+      "implementationPath": "src/skills/alphaos/living-assistant/signal-radar/pollers/binance-announcements.ts",
+      "outputVisibility": {
+        "status": "visible",
+        "surfaces": [
+          "/api/v1/living-assistant/evaluate.signal.source",
+          "/api/v1/living-assistant/demo/:scenarioName.signal.source"
+        ]
+      },
+      "notes": "Official feed capability is integrated as a Signal Radar poller."
+    },
+    {
+      "officialSkillId": null,
+      "capability": "Binance Square signal ingestion",
+      "stage": "signal",
+      "status": "integrated",
+      "runtimeStatus": "runtime_wired",
+      "implementationPath": "src/skills/alphaos/living-assistant/signal-radar/pollers/binance-square.ts",
+      "outputVisibility": {
+        "status": "visible",
+        "surfaces": [
+          "/api/v1/living-assistant/evaluate.signal.source",
+          "/api/v1/living-assistant/demo/:scenarioName.signal.source"
+        ]
+      },
+      "notes": "Official feed capability is integrated as a Signal Radar poller."
+    },
+    {
+      "officialSkillId": "binance-web3/trading-signal",
+      "capability": "Structured trading signal enrichment for judge/decision narratives",
+      "stage": "enrichment",
+      "status": "planned",
+      "runtimeStatus": "not_wired",
+      "implementationPath": null,
+      "outputVisibility": {
+        "status": "not_visible",
+        "surfaces": []
+      },
+      "notes": "Next-phase priority for stronger decision context."
+    },
+    {
+      "officialSkillId": "binance-web3/query-address-info",
+      "capability": "Address risk/readiness enrichment",
+      "stage": "enrichment",
+      "status": "planned",
+      "runtimeStatus": "not_wired",
+      "implementationPath": null,
+      "outputVisibility": {
+        "status": "not_visible",
+        "surfaces": []
+      },
+      "notes": "Planned to deepen readiness and risk context."
+    },
+    {
+      "officialSkillId": "binance/square-post",
+      "capability": "Distribution publishing to Binance Square",
+      "stage": "distribution",
+      "status": "planned",
+      "runtimeStatus": "not_wired",
+      "implementationPath": null,
+      "outputVisibility": {
+        "status": "not_visible",
+        "surfaces": []
+      },
+      "notes": "Planned distribution-stage extension."
+    }
+  ]
+}

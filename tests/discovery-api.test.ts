@@ -440,6 +440,12 @@ describe("discovery api", () => {
     expect(approve.status).toBe(200);
     expect((approve.body as { approved: boolean }).approved).toBe(true);
     const moduleResponse = (approve.body as {
+      skillAttribution: {
+        skillSources: string[];
+        requiredSkillsUsed: string[];
+        enrichmentSkillsUsed: string[];
+        distributionSkillsUsed: string[];
+      };
       moduleResponse: {
         module: string;
         marketContext?: { pair: string; sourceSkill: string };
@@ -447,17 +453,33 @@ describe("discovery api", () => {
         enrichmentContext?: { sourceSkills: string[] };
         skillUsage: { required: string[]; enrichment: string[] };
       };
-    }).moduleResponse;
-    expect(moduleResponse.module).toBe("arbitrage");
-    expect(moduleResponse.marketContext?.pair).toBe("ETH/USDC");
-    expect(moduleResponse.marketContext?.sourceSkill).toBe("binance/spot");
-    expect(moduleResponse.readinessContext?.balanceReady).toBe(true);
-    expect(moduleResponse.readinessContext?.sourceSkill).toBe("binance/assets");
-    expect(moduleResponse.enrichmentContext?.sourceSkills).toEqual(
+    });
+    expect(moduleResponse.skillAttribution.skillSources).toEqual(
+      expect.arrayContaining([
+        "binance/spot",
+        "binance/assets",
+        "binance-web3/query-token-info",
+        "binance-web3/query-token-audit",
+      ]),
+    );
+    expect(moduleResponse.skillAttribution.requiredSkillsUsed).toEqual(
+      expect.arrayContaining(["binance/spot", "binance/assets"]),
+    );
+    expect(moduleResponse.skillAttribution.enrichmentSkillsUsed).toEqual(
       expect.arrayContaining(["binance-web3/query-token-info", "binance-web3/query-token-audit"]),
     );
-    expect(moduleResponse.skillUsage.required).toEqual(expect.arrayContaining(["binance/spot", "binance/assets"]));
-    expect(moduleResponse.skillUsage.enrichment).toEqual(
+    expect(moduleResponse.skillAttribution.distributionSkillsUsed).toEqual([]);
+    const adapted = moduleResponse.moduleResponse;
+    expect(adapted.module).toBe("arbitrage");
+    expect(adapted.marketContext?.pair).toBe("ETH/USDC");
+    expect(adapted.marketContext?.sourceSkill).toBe("binance/spot");
+    expect(adapted.readinessContext?.balanceReady).toBe(true);
+    expect(adapted.readinessContext?.sourceSkill).toBe("binance/assets");
+    expect(adapted.enrichmentContext?.sourceSkills).toEqual(
+      expect.arrayContaining(["binance-web3/query-token-info", "binance-web3/query-token-audit"]),
+    );
+    expect(adapted.skillUsage.required).toEqual(expect.arrayContaining(["binance/spot", "binance/assets"]));
+    expect(adapted.skillUsage.enrichment).toEqual(
       expect.arrayContaining(["binance-web3/query-token-info", "binance-web3/query-token-audit"]),
     );
 
@@ -525,6 +547,12 @@ describe("discovery api", () => {
       executionMode: string;
       effectiveMode: string;
       modePolicy: string;
+      skillAttribution: {
+        skillSources: string[];
+        requiredSkillsUsed: string[];
+        enrichmentSkillsUsed: string[];
+        distributionSkillsUsed: string[];
+      };
       moduleResponse: {
         module: string;
       };
@@ -545,6 +573,12 @@ describe("discovery api", () => {
         };
         simulationSummary: { status: string } | null;
         executionSummary: { status: string; liveExecutionAttempted: boolean };
+        skillAttribution: {
+          skillSources: string[];
+          requiredSkillsUsed: string[];
+          enrichmentSkillsUsed: string[];
+          distributionSkillsUsed: string[];
+        };
       };
     };
     expect(body.modePolicy).toBe("paper_mode_enforced");
@@ -552,6 +586,10 @@ describe("discovery api", () => {
     expect(body.executionMode).toBe("paper");
     expect(body.effectiveMode).toBe("paper");
     expect(body.moduleResponse.module).toBe("arbitrage");
+    expect(body.skillAttribution.requiredSkillsUsed).toEqual(expect.arrayContaining(["binance/spot", "binance/assets"]));
+    expect(body.skillAttribution.enrichmentSkillsUsed).toEqual(
+      expect.arrayContaining(["binance-web3/query-token-info", "binance-web3/query-token-audit"]),
+    );
     expect(body.demo.flow).toBe("arbitrage_judge_paper_demo_v1");
     expect(body.demo.demoSafe).toBe(true);
     expect(body.demo.operatorSummary).toContain("[arbitrage][paper]");
@@ -563,6 +601,14 @@ describe("discovery api", () => {
     expect(body.demo.contexts.readinessContext?.sourceSkill).toBe("binance/assets");
     expect(body.demo.contexts.enrichmentContext?.sourceSkills).toEqual(
       expect.arrayContaining(["binance-web3/query-token-info", "binance-web3/query-token-audit"]),
+    );
+    expect(body.demo.skillAttribution.skillSources).toEqual(
+      expect.arrayContaining([
+        "binance/spot",
+        "binance/assets",
+        "binance-web3/query-token-info",
+        "binance-web3/query-token-audit",
+      ]),
     );
     expect(body.demo.simulationSummary?.status).toBe("pass");
     expect(body.demo.executionSummary.status).toBe("completed");
