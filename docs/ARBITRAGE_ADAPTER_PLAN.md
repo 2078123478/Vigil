@@ -4,7 +4,7 @@ This document defines the adapter layer plan for the Arbitrage Module.
 
 Goal:
 
-> connect Binance official open skills to the Arbitrage Module in a way that is truthful, incremental, and compatible with the current OnchainOS-based backend.
+> connect Binance official open skills to the Arbitrage Module in a way that is truthful, incremental, and compatible with the current execution backend.
 
 The adapter layer is the shortest path to making the module feel **Binance Skills-compatible** without forcing an immediate rewrite of the current engine.
 

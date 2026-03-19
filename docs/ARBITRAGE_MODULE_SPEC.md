@@ -2,7 +2,7 @@
 
 This document defines the first flagship strategy module for Vigil:
 
-> a **Binance Skills-compatible arbitrage module** for the **BNB ecosystem**, built on top of the current OnchainOS-based execution backend.
+> a **Binance Skills-compatible arbitrage module** for the **BNB ecosystem**, built on top of the current execution backend.
 
 This is a **product and architecture spec**, not a final implementation document.
 The goal is to define a module that is easy to explain, easy to demo, and worth building toward in staged iterations.
@@ -40,7 +40,7 @@ Key framing:
 
 - **not** just a raw arbitrage bot
 - **not** just a collection of market API calls
-- **not** just an internal plugin name inside OnchainOS
+- **not** just an internal plugin name inside the legacy execution stack
 
 Instead, it should look like:
 
@@ -62,7 +62,7 @@ Instead, it should look like:
 
 ### Internal reality today
 
-- the current working execution backend is still OnchainOS-based
+- the current working execution backend is still based on the legacy execution stack
 - the current strategy implementation is `dex-arbitrage`
 - the current engine already supports:
   - scan
@@ -136,7 +136,7 @@ Compatibility target:
 | cost model | fees / slippage / MEV / gas estimation |
 | simulator | pre-trade validation |
 | risk engine | policy gating and circuit breaking |
-| OnchainOS client | execution backend |
+| execution client | execution backend |
 | notifier / growth surfaces | summaries, alerts, demo outputs |
 
 ---
@@ -442,7 +442,7 @@ Not required in v0:
 - every arbitrage class
 - fully generalized cross-chain routing
 - perfect internal renaming
-- replacing the current OnchainOS backend
+- replacing the current execution backend
 - full one-to-one parity with every Binance skill
 
 v0 should focus on:

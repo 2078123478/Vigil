@@ -20,6 +20,7 @@ vi.mock("../src/skills/alphaos/runtime/agent-comm/entrypoints", async () => {
     sendCommConnectionInvite: vi.fn(),
     sendCommConnectionReject: vi.fn(),
     sendCommPing: vi.fn(),
+    sendCommProbeExecution: vi.fn(),
     sendCommProbeOnchainOs: vi.fn(),
     sendCommRequestModeChange: vi.fn(),
     sendCommStartDiscovery: vi.fn(),
@@ -37,6 +38,7 @@ import {
   sendCommConnectionInvite,
   sendCommConnectionReject,
   sendCommPing,
+  sendCommProbeExecution,
   sendCommProbeOnchainOs,
   sendCommRequestModeChange,
   sendCommStartDiscovery,
@@ -891,6 +893,26 @@ describe("agent-comm HTTP API", () => {
       envelopeVersion: 1,
       legacyFallbackUsed: true,
     });
+    vi.mocked(sendCommProbeExecution).mockResolvedValue({
+      address: "0x1111111111111111111111111111111111111111",
+      pubkey: "03aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      chainId: 196,
+      walletAlias: "agent-comm",
+      defaultSenderPeerId: "agent-comm",
+      identityWallet: "0x1111111111111111111111111111111111111111",
+      transportAddress: "0x1111111111111111111111111111111111111111",
+      localIdentityMode: "temporary_dual_use",
+      supportedProtocols: ["agent-comm/2", "agent-comm/1"],
+      txHash: "0xprobe-execution",
+      nonce: "probe-execution-nonce",
+      sentAt: "2026-03-06T00:00:00.500Z",
+      peerId: "peer-b",
+      recipient: "0x9999999999999999999999999999999999999999",
+      senderPeerId: "agent-a",
+      commandType: "probe_execution",
+      envelopeVersion: 2,
+      legacyFallbackUsed: false,
+    });
     vi.mocked(sendCommProbeOnchainOs).mockResolvedValue({
       address: "0x1111111111111111111111111111111111111111",
       pubkey: "03aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -987,7 +1009,7 @@ describe("agent-comm HTTP API", () => {
     const probeResponse = await invokeApi(
       app,
       "POST",
-      "/api/v1/agent-comm/send/probe-onchainos",
+      "/api/v1/agent-comm/send/probe-execution",
       {
         peerId: "peer-b",
         senderPeerId: "agent-a",
@@ -1001,7 +1023,41 @@ describe("agent-comm HTTP API", () => {
     );
 
     expect(probeResponse.status).toBe(200);
-    expect((probeResponse.body as { txHash: string }).txHash).toBe("0xprobe");
+    expect((probeResponse.body as { txHash: string }).txHash).toBe("0xprobe-execution");
+    expect(vi.mocked(sendCommProbeExecution)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sendCommProbeExecution)).toHaveBeenCalledWith(
+      {
+        config,
+        store,
+        vault,
+      },
+      {
+        peerId: "peer-b",
+        senderPeerId: "agent-a",
+        pair: "ETH/USDC",
+        chainIndex: "196",
+        notionalUsd: 42.5,
+      },
+    );
+
+    const legacyProbeResponse = await invokeApi(
+      app,
+      "POST",
+      "/api/v1/agent-comm/send/probe-onchainos",
+      {
+        peerId: "peer-b",
+        senderPeerId: "agent-a",
+        pair: "eth/usdc",
+        chainIndex: "196",
+        notionalUsd: 42.5,
+      },
+      {
+        authorization: `Bearer ${TEST_API_SECRET}`,
+      },
+    );
+
+    expect(legacyProbeResponse.status).toBe(200);
+    expect((legacyProbeResponse.body as { txHash: string }).txHash).toBe("0xprobe");
     expect(vi.mocked(sendCommProbeOnchainOs)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(sendCommProbeOnchainOs)).toHaveBeenCalledWith(
       {

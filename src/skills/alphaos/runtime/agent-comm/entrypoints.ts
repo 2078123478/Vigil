@@ -1853,6 +1853,40 @@ export async function sendCommStartDiscovery(
   });
 }
 
+function buildProbeExecutionPayload(options: {
+  pair?: ProbeOnchainOsCommandPayload["pair"];
+  chainIndex?: ProbeOnchainOsCommandPayload["chainIndex"];
+  notionalUsd?: ProbeOnchainOsCommandPayload["notionalUsd"];
+}) {
+  return {
+    ...(options.pair ? { pair: options.pair } : {}),
+    ...(options.chainIndex ? { chainIndex: options.chainIndex } : {}),
+    ...(options.notionalUsd !== undefined ? { notionalUsd: options.notionalUsd } : {}),
+  };
+}
+
+export async function sendCommProbeExecution(
+  deps: AgentCommEntrypointDependencies,
+  options: {
+    masterPassword?: string;
+    peerId: string;
+    senderPeerId?: string;
+    pair?: ProbeOnchainOsCommandPayload["pair"];
+    chainIndex?: ProbeOnchainOsCommandPayload["chainIndex"];
+    notionalUsd?: ProbeOnchainOsCommandPayload["notionalUsd"];
+  },
+): Promise<SendCommCommandResult> {
+  return sendCommCommand(deps, {
+    masterPassword: options.masterPassword,
+    peerId: options.peerId,
+    senderPeerId: options.senderPeerId,
+    command: {
+      type: "probe_execution",
+      payload: buildProbeExecutionPayload(options),
+    },
+  });
+}
+
 export async function sendCommProbeOnchainOs(
   deps: AgentCommEntrypointDependencies,
   options: {
@@ -1870,11 +1904,7 @@ export async function sendCommProbeOnchainOs(
     senderPeerId: options.senderPeerId,
     command: {
       type: "probe_onchainos",
-      payload: {
-        ...(options.pair ? { pair: options.pair } : {}),
-        ...(options.chainIndex ? { chainIndex: options.chainIndex } : {}),
-        ...(options.notionalUsd !== undefined ? { notionalUsd: options.notionalUsd } : {}),
-      },
+      payload: buildProbeExecutionPayload(options),
     },
   });
 }

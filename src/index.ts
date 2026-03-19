@@ -24,6 +24,7 @@ import {
   sendCommConnectionInvite,
   sendCommConnectionReject,
   sendCommPing,
+  sendCommProbeExecution,
   sendCommProbeOnchainOs,
   sendCommRequestModeChange,
   sendCommStartDiscovery,
@@ -248,11 +249,12 @@ export function getAgentCommHelpText(): string {
     "  agent-comm:connect:accept <contactRef> [--attach-inline-card]",
     "  agent-comm:connect:reject <contactRef>",
     "  agent-comm:peer:trust    (legacy/manual v1 fallback)",
-    "  agent-comm:send <ping|probe_onchainos|start_discovery|request_mode_change> <peerId|contact:contactId>",
+    "  agent-comm:send <ping|probe_execution|start_discovery|request_mode_change> <peerId|contact:contactId>",
     "",
     "Notes:",
     "  Preferred flow: add contact via card import, then connect via invite/accept.",
     "  Business send accepts a trusted peerId or contact:<contactId>.",
+    "  Legacy alias still supported: probe_onchainos → probe_execution.",
     "  Card export emits a shareUrl that can be copied into a QR code or short link wrapper.",
     "Canonical typed-data contracts:",
     "  docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md",
@@ -760,7 +762,7 @@ export async function run(): Promise<void> {
     const [commandType, peerId] = parsed.positionals;
     if (!commandType || !peerId) {
       throw new Error(
-        "Usage: tsx src/index.ts agent-comm:send <ping|probe_onchainos|start_discovery|request_mode_change> <peerId|contact:contactId> [--sender-peer-id <peerId>] [command flags]",
+        "Usage: tsx src/index.ts agent-comm:send <ping|probe_execution|probe_onchainos|start_discovery|request_mode_change> <peerId|contact:contactId> [--sender-peer-id <peerId>] [command flags]",
       );
     }
 
@@ -822,8 +824,10 @@ export async function run(): Promise<void> {
         return;
       }
 
-      if (commandType === "probe_onchainos") {
-        const result = await sendCommProbeOnchainOs(
+      if (commandType === "probe_execution" || commandType === "probe_onchainos") {
+        const sendProbe =
+          commandType === "probe_execution" ? sendCommProbeExecution : sendCommProbeOnchainOs;
+        const result = await sendProbe(
           {
             config,
             store,
@@ -873,7 +877,7 @@ export async function run(): Promise<void> {
       }
 
       throw new Error(
-        `Unsupported agent-comm command: ${commandType}. Supported values: ping, probe_onchainos, start_discovery, request_mode_change`,
+        `Unsupported agent-comm command: ${commandType}. Supported values: ping, probe_execution, probe_onchainos, start_discovery, request_mode_change`,
       );
     } finally {
       store.close();

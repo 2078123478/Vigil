@@ -4,7 +4,7 @@ This document turns `ARBITRAGE_MODULE_SPEC.md` into an execution-oriented task l
 
 Goal:
 
-> make the arbitrage module the first **Binance Skills-compatible flagship strategy module** in Vigil, while preserving the current OnchainOS-based execution backend.
+> make the arbitrage module the first **Binance Skills-compatible flagship strategy module** in Vigil, while preserving the current execution backend.
 
 This is a staged task list, not a promise to build everything at once.
 The priority is to create a **credible, demoable, BN ecosystem-native module path** with minimal architectural thrash.
@@ -52,7 +52,7 @@ Purpose: stop the project from drifting back into backend-first or naming-first 
   - Focus:
     - `AGENT_COMM_EXPLAINED.md`
     - `AGENT_COMM_PRODUCTION_DEPLOYMENT.md`
-    - any doc still over-centering AlphaOS / OnchainOS in external framing
+    - any doc still over-centering AlphaOS / legacy execution labels in external framing
 
 ### Exit condition
 
@@ -60,7 +60,7 @@ Anyone reading the repo should understand:
 
 - Binance official skills are the ecosystem-facing capability layer
 - Vigil is the product / orchestration / strategy layer
-- OnchainOS is the current backend, not the product headline
+- The current execution backend is implementation detail, not the product headline
 
 ---
 

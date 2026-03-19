@@ -68,6 +68,7 @@ export async function routeCommand(
         return { success: true, result };
       }
 
+      case "probe_execution":
       case "probe_onchainos": {
         const payload = command.payload;
         const result = await options.onchain.probeConnection({

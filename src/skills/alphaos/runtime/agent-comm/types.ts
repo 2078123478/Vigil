@@ -19,6 +19,7 @@ export const AGENT_COMM_KEX_SUITE_V2 = "secp256k1-ecdh-aes256gcm-v2";
 
 export const agentBusinessCommandTypes = [
   "ping",
+  "probe_execution",
   "probe_onchainos",
   "start_discovery",
   "get_discovery_report",
@@ -212,6 +213,10 @@ export const versionedAgentCommandSchema = strictObject({
 });
 
 export const pingCommandSchema = createCommandSchema("ping", pingCommandPayloadSchema);
+export const probeExecutionCommandSchema = createCommandSchema(
+  "probe_execution",
+  probeOnchainOsCommandPayloadSchema,
+);
 export const probeOnchainOsCommandSchema = createCommandSchema(
   "probe_onchainos",
   probeOnchainOsCommandPayloadSchema,
@@ -251,6 +256,7 @@ export const connectionConfirmCommandSchema = createCommandSchema(
 
 export const agentCommandSchema = z.discriminatedUnion("type", [
   pingCommandSchema,
+  probeExecutionCommandSchema,
   probeOnchainOsCommandSchema,
   startDiscoveryCommandSchema,
   getDiscoveryReportCommandSchema,
@@ -540,6 +546,7 @@ export type ConnectionConfirmCommandPayload = z.infer<typeof connectionConfirmCo
 export type AgentCommandDescriptor = z.infer<typeof agentCommandDescriptorSchema>;
 export type VersionedAgentCommand = z.infer<typeof versionedAgentCommandSchema>;
 export type PingCommand = z.infer<typeof pingCommandSchema>;
+export type ProbeExecutionCommand = z.infer<typeof probeExecutionCommandSchema>;
 export type ProbeOnchainOsCommand = z.infer<typeof probeOnchainOsCommandSchema>;
 export type StartDiscoveryCommand = z.infer<typeof startDiscoveryCommandSchema>;
 export type GetDiscoveryReportCommand = z.infer<typeof getDiscoveryReportCommandSchema>;

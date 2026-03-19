@@ -55,7 +55,7 @@ Agent-Comm 不是“随便往链上写点数据”。
 当前支持的命令类型有：
 
 - `ping`
-- `probe_onchainos`
+- `probe_execution`（旧别名：`probe_onchainos`）
 - `start_discovery`
 - `get_discovery_report`
 - `approve_candidate`

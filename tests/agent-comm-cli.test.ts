@@ -36,6 +36,7 @@ const rotateCommWalletMock = vi.hoisted(() => vi.fn());
 const sendCommConnectionInviteMock = vi.hoisted(() => vi.fn());
 const sendCommConnectionAcceptMock = vi.hoisted(() => vi.fn());
 const sendCommConnectionRejectMock = vi.hoisted(() => vi.fn());
+const sendCommProbeExecutionMock = vi.hoisted(() => vi.fn());
 const sendCommProbeOnchainOsMock = vi.hoisted(() => vi.fn());
 const sendCommRequestModeChangeMock = vi.hoisted(() => vi.fn());
 const revokeIdentityArtifactMock = vi.hoisted(() => vi.fn());
@@ -75,6 +76,7 @@ vi.mock("../src/skills/alphaos/runtime/agent-comm/entrypoints", () => ({
   sendCommConnectionInvite: sendCommConnectionInviteMock,
   sendCommConnectionReject: sendCommConnectionRejectMock,
   sendCommPing: vi.fn(),
+  sendCommProbeExecution: sendCommProbeExecutionMock,
   sendCommProbeOnchainOs: sendCommProbeOnchainOsMock,
   sendCommRequestModeChange: sendCommRequestModeChangeMock,
   sendCommStartDiscovery: vi.fn(),
@@ -142,6 +144,11 @@ beforeEach(() => {
     txHash: "0xtx-reject",
     contactId: "ct_reject",
   });
+  sendCommProbeExecutionMock.mockResolvedValue({
+    txHash: "0xtx-probe-execution",
+    peerId: "peer-probe",
+    commandType: "probe_execution",
+  });
   sendCommProbeOnchainOsMock.mockResolvedValue({
     txHash: "0xtx-probe",
     peerId: "peer-probe",
@@ -208,9 +215,10 @@ describe("agent-comm CLI contact/connect commands", () => {
     expect(output).toContain("agent-comm:artifact:import-revocation <file|raw-json>");
     expect(output).toContain("agent-comm:peer:trust    (legacy/manual v1 fallback)");
     expect(output).toContain("agent-comm:wallet:rotate");
-    expect(output).toContain("agent-comm:send <ping|probe_onchainos|start_discovery|request_mode_change>");
+    expect(output).toContain("agent-comm:send <ping|probe_execution|start_discovery|request_mode_change>");
     expect(output).toContain("Preferred flow: add contact via card import, then connect via invite/accept.");
     expect(output).toContain("Business send accepts a trusted peerId or contact:<contactId>.");
+    expect(output).toContain("Legacy alias still supported: probe_onchainos → probe_execution.");
     expect(output).toContain("agent-comm:card:import <file|raw-json|share-url>");
     expect(output).not.toContain("reserved, not implemented in this phase");
   });
@@ -466,13 +474,50 @@ describe("agent-comm CLI contact/connect commands", () => {
     });
   });
 
-  it("forwards probe_onchainos send flags to the entrypoint", async () => {
+  it("forwards probe_execution send flags to the entrypoint", async () => {
+    const output = await runCli([
+      "agent-comm:send",
+      "probe_execution",
+      "peer-probe",
+      "--sender-peer-id",
+      "peer-local",
+      "--pair",
+      "eth/usdc",
+      "--chain-index",
+      "196",
+      "--notional-usd",
+      "42.5",
+    ]);
+
+    expect(sendCommProbeExecutionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          dataDir: "/tmp/agent-comm-cli",
+        }),
+        store: expect.any(Object),
+        vault: expect.any(Object),
+      }),
+      {
+        peerId: "peer-probe",
+        senderPeerId: "peer-local",
+        pair: "ETH/USDC",
+        chainIndex: "196",
+        notionalUsd: 42.5,
+      },
+    );
+    expect(JSON.parse(output)).toEqual({
+      action: "agent-comm:send",
+      txHash: "0xtx-probe-execution",
+      peerId: "peer-probe",
+      commandType: "probe_execution",
+    });
+  });
+
+  it("still supports the legacy probe_onchainos alias", async () => {
     const output = await runCli([
       "agent-comm:send",
       "probe_onchainos",
       "peer-probe",
-      "--sender-peer-id",
-      "peer-local",
       "--pair",
       "eth/usdc",
       "--chain-index",
@@ -491,7 +536,6 @@ describe("agent-comm CLI contact/connect commands", () => {
       }),
       {
         peerId: "peer-probe",
-        senderPeerId: "peer-local",
         pair: "ETH/USDC",
         chainIndex: "196",
         notionalUsd: 42.5,

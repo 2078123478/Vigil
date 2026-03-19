@@ -22,6 +22,50 @@ function createRouterOptions(): TaskRouterOptions {
 }
 
 describe("agent-comm task router", () => {
+  it("routes probe_execution to onchain.probeConnection", async () => {
+    const options = createRouterOptions();
+    vi.mocked(options.onchain.probeConnection).mockResolvedValue({
+      ok: true,
+      configured: true,
+      mode: "v6",
+      pair: "ETH/USDC",
+      chainIndex: "196",
+      notionalUsd: 25,
+      simulateRequired: true,
+      message: "v6 probe passed",
+      checkedAt: "2026-03-08T00:00:00.000Z",
+    });
+
+    const result = await routeCommand(options, {
+      type: "probe_execution",
+      payload: {
+        pair: "ETH/USDC",
+        chainIndex: "196",
+        notionalUsd: 25,
+      },
+    });
+
+    expect(options.onchain.probeConnection).toHaveBeenCalledWith({
+      pair: "ETH/USDC",
+      chainIndex: "196",
+      notionalUsd: 25,
+    });
+    expect(result).toEqual({
+      success: true,
+      result: {
+        ok: true,
+        configured: true,
+        mode: "v6",
+        pair: "ETH/USDC",
+        chainIndex: "196",
+        notionalUsd: 25,
+        simulateRequired: true,
+        message: "v6 probe passed",
+        checkedAt: "2026-03-08T00:00:00.000Z",
+      },
+    });
+  });
+
   it("routes probe_onchainos to onchain.probeConnection", async () => {
     const options = createRouterOptions();
     vi.mocked(options.onchain.probeConnection).mockResolvedValue({

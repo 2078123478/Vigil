@@ -2,7 +2,7 @@
 
 This document captures the **current product direction**:
 
-> Vigil should evolve into a **BNB ecosystem-native agent product** that is **compatible with Binance official open skills**, while keeping the current OnchainOS-based execution stack as the working backend.
+> Vigil should evolve into a **BNB ecosystem-native agent product** that is **compatible with Binance official open skills**, while keeping the current execution stack as the working backend.
 
 This is **not** a full rewrite plan.
 It is a framing and migration plan so future docs, modules, and demos all move in the same direction.
@@ -55,15 +55,15 @@ Vigil should sit **above** the official skill layer and provide:
 - memory and operator context
 - explainable action proposals and execution summaries
 
-### OnchainOS is the current execution backend
+### The current execution backend is already in place
 
-OnchainOS should remain visible as an implementation fact, but not dominate the top-level story.
+The legacy execution-backend label may remain as an implementation fact, but it should not dominate the top-level story.
 
 The preferred framing is:
 
 - **BNB ecosystem-native product**
 - **Binance Skills-compatible capability model**
-- **powered by the current OnchainOS execution backend**
+- **powered by the current execution backend**
 
 ---
 
@@ -126,7 +126,7 @@ This is the main difference between:
 
 Purpose: run the real workflow reliably.
 
-This is where the current OnchainOS stack remains valuable:
+This is where the current execution stack remains valuable:
 
 - discovery runtime
 - simulation
@@ -227,14 +227,14 @@ The practical migration model is:
 |------|------|--------------------------------------|
 | Binance official skills | ecosystem capability surface | official / open / BN-compatible building blocks |
 | Vigil strategy modules | differentiated intelligence | arbitrage, risk, alpha capture, signal orchestration |
-| OnchainOS backend | execution substrate | current runtime / engine / execution backend |
+| execution backend | execution substrate | current runtime / engine / execution backend |
 | Agent-Comm + Judge + UX | trust and product layer | product experience, explainability, multi-agent coordination |
 
 Another useful way to think about it:
 
 | Current asset | Future framing |
 |--------------|----------------|
-| OnchainOS discovery / execution loop | backend execution engine |
+| current discovery / execution loop | backend execution engine |
 | Agent-Comm | trust and coordination layer |
 | Judge | decision and explanation layer |
 | Vigil | BN ecosystem-native product shell |
@@ -261,7 +261,7 @@ before deeper internal surgery.
 
 Do not fake the current state.
 
-If the backend is currently OnchainOS-based, say so.
+If the backend still depends on the legacy execution stack, say so.
 If a module still uses historical names internally, preserve that fact.
 The improvement is in **positioning and architecture alignment**, not pretending the internals already changed.
 
@@ -296,7 +296,7 @@ Future doc changes should gradually reflect this structure.
 - BNB ecosystem-native positioning
 - compatibility with Binance official open skills
 - Vigil as product layer
-- OnchainOS as current backend
+- current execution backend as implementation fact
 
 ### Strategy docs should emphasize
 
@@ -342,4 +342,4 @@ Future doc changes should gradually reflect this structure.
 
 ## 9. One-sentence summary
 
-**Binance official skills should become our ecosystem-facing capability standard; Vigil should become the product and strategy layer built on top of that standard; OnchainOS should remain the current execution backend underneath.**
+**Binance official skills should become our ecosystem-facing capability standard; Vigil should become the product and strategy layer built on top of that standard; the current execution backend should remain underneath.**

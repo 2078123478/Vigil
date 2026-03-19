@@ -38,6 +38,7 @@ import {
   sendCommConnectionInvite,
   sendCommConnectionReject,
   sendCommPing,
+  sendCommProbeExecution,
   sendCommProbeOnchainOs,
   sendCommRequestModeChange,
   sendCommStartDiscovery,
@@ -2695,7 +2696,7 @@ export function createServer(
     }
   });
 
-  const handleProbeExecutionSend: RequestHandler = async (req, res) => {
+  const handleLegacyProbeOnchainOsSend: RequestHandler = async (req, res) => {
     const deps = ensureAgentCommSendDeps(res);
     if (!deps) {
       return;
@@ -2714,7 +2715,26 @@ export function createServer(
     }
   };
 
-  app.post("/api/v1/agent-comm/send/probe-onchainos", handleProbeExecutionSend);
+  const handleProbeExecutionSend: RequestHandler = async (req, res) => {
+    const deps = ensureAgentCommSendDeps(res);
+    if (!deps) {
+      return;
+    }
+
+    const parsed = parseProbeOnchainOsSendBody(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+
+    try {
+      res.json(await sendCommProbeExecution(deps, parsed.input));
+    } catch (error) {
+      handleAgentCommApiError(res, error);
+    }
+  };
+
+  app.post("/api/v1/agent-comm/send/probe-onchainos", handleLegacyProbeOnchainOsSend);
   app.post("/api/v1/agent-comm/send/probe-execution", handleProbeExecutionSend);
 
   app.post("/api/v1/agent-comm/send/start-discovery", async (req, res) => {

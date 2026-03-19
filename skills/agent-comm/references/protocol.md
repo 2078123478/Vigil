@@ -94,7 +94,8 @@ Encryption: ECDH shared secret (sender ephemeral + recipient static) → AES-256
 | Command | Purpose | Key Params |
 |---------|---------|------------|
 | `ping` | Liveness check | `echo`, `note` |
-| `probe_onchainos` | Query execution readiness | `pair`, `chainIndex`, `notionalUsd` |
+| `probe_execution` | Query execution readiness | `pair`, `chainIndex`, `notionalUsd` |
+| `probe_onchainos` | Legacy alias for execution readiness probe | `pair`, `chainIndex`, `notionalUsd` |
 | `start_discovery` | Request discovery session | `strategyId`, `pairs`, `durationMinutes` |
 | `get_discovery_report` | Fetch discovery results | `sessionId` |
 | `approve_candidate` | Approve discovered candidate | `sessionId`, `candidateId`, `mode` |

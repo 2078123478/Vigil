@@ -85,7 +85,8 @@ agent-comm:send <command> <peerId|contact:contactId> [flags]
 
 # Supported commands:
 #   ping                    — liveness check
-#   probe_onchainos         — query peer's execution-backend readiness
+#   probe_execution         — query peer's execution-backend readiness
+#   probe_onchainos         — legacy alias for probe_execution
 #   start_discovery         — request peer to run discovery session
 #   request_mode_change     — ask peer to switch paper/live mode
 ```
@@ -100,7 +101,7 @@ Command-specific flags:
 --strategy-id <spread-threshold|mean-reversion|volatility-breakout>
 --pairs ETH/USDC,WBTC/USDC --duration-minutes 30 --top-n 5
 
-# probe_onchainos
+# probe_execution (legacy alias: probe_onchainos)
 --pair ETH/USDC --notional-usd 100
 
 # request_mode_change

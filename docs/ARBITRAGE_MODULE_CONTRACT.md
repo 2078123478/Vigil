@@ -5,7 +5,7 @@ This document defines the **product-facing contract** for the Arbitrage Module.
 It sits between:
 
 - upstream capability sources such as Binance official open skills
-- internal execution infrastructure such as the current OnchainOS-based backend
+- internal execution infrastructure such as the current execution backend
 - downstream product surfaces such as dashboards, reports, demos, and operator approvals
 
 The purpose of this contract is simple:
@@ -93,7 +93,7 @@ strategy-module
 
 - **Product layer name:** Arbitrage Module
 - **Current implementation anchor:** `dex-arbitrage`
-- **Execution backend:** current OnchainOS-based backend
+- **Execution backend:** current execution backend
 
 ---
 

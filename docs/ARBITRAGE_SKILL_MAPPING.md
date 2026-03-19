@@ -4,7 +4,7 @@ This document maps the Arbitrage Module to Binance official open skills and to t
 
 The purpose is to make one claim concrete:
 
-> the Arbitrage Module is not a standalone black box; it is a strategy layer that can be built on top of Binance ecosystem skills while continuing to use the current OnchainOS-based backend underneath.
+> the Arbitrage Module is not a standalone black box; it is a strategy layer that can be built on top of Binance ecosystem skills while continuing to use the current execution backend underneath.
 
 ---
 
@@ -19,7 +19,7 @@ The mapping has three layers:
 Think of it like this:
 
 ```text
-Binance official skills → Arbitrage Module → OnchainOS backend → Product surfaces
+Binance official skills → Arbitrage Module → execution backend → Product surfaces
 ```
 
 ---
@@ -41,7 +41,7 @@ The table below shows where capabilities should come from.
 | validate | check thresholds and policy | `binance/assets`, `binance/spot`, optional audit / address signals | `dex-arbitrage.ts` evaluate, risk engine, cost model |
 | simulate | estimate post-cost viability | upstream market context from `binance/spot` / `binance/alpha` | simulator, cost model |
 | decide | produce paper / assisted-live / live decision | optional support from skill-derived context | evaluation + module adapter |
-| execute | route approved plan into backend | `binance/spot`, `binance/alpha`, `binance/assets` as capability context; backend remains current execution path | OnchainOS client, engine |
+| execute | route approved plan into backend | `binance/spot`, `binance/alpha`, `binance/assets` as capability context; backend remains current execution path | execution client, engine |
 | summarize | produce operator and judge outputs | `binance/square-post` for optional distribution | notifier, growth moments, share/report surfaces |
 
 ---
