@@ -1,21 +1,51 @@
 # Vigil — BNB 生态智能生活助手
 
-> 不是被动等命令的 bot，而是住在 BNB 生态里、24h 主动感知信号、有判断力、会说话、链上可信的 AI 生活助手。
+> Vigil 是一个面向 BNB 生态的执行型 AI Assistant：持续感知信号、判断是否需要打扰用户，并以可复验的 paper-first 流程输出决策。
 
 ---
 
-## 📖 评委必读 — 项目介绍文档
+## Judge Quick Start (5 分钟)
 
-> **强烈建议先阅读项目介绍文档，了解 Vigil 的完整设计理念和技术深度。**
+```bash
+npm install
+cp .env.example .env
 
-| 文档 | 说明 | 链接 |
-|------|------|------|
-| 📋 **项目介绍（简版）** | 5 分钟快速了解四大模块 + 技术亮点 | [项目介绍-简版.md](项目介绍-简版.md) |
-| 📚 **项目介绍（深度版）** | 完整架构设计 + 技术细节 + 商业化路径 | [项目介绍.md](项目介绍.md) |
+# Terminal A: 启动服务（可选但推荐）
+npm run dev
+
+# Terminal B: 运行评委演示包装脚本
+npm run demo:judge
+```
+
+`demo:judge` 会优先运行稳定的本地演示（`demo:living-assistant`），再在服务可用时尝试 `demo:discovery`，并将证据输出到 `demo-output/`。
 
 ---
 
-## 核心能力一览
+## 3 Core Capabilities
+
+1. **主动感知与判断（Living Assistant）**  
+   `Signal Radar -> Contact Policy -> Voice Brief`，支持 `silent` 到 `call_escalation` 的注意力分级。
+2. **风险优先的执行闭环（Execution）**  
+   默认 `paper` 模式，包含成本建模、门控与熔断，避免演示依赖不稳定 live 条件。
+3. **Agent-Comm 链上可信通信**  
+   钱包身份、签名名片、加密消息与连接生命周期管理，支持可验证的 Agent 间交互。
+
+## Judge References
+
+| 资源 | 用途 |
+|------|------|
+| [Judge Guide](docs/JUDGE_GUIDE.md) | 一页理解项目价值、演示路径、真实/模拟边界 |
+| [Evidence Map](docs/EVIDENCE.md) | 关键主张的证据类型、源码路径与复验步骤 |
+| [Metrics Confidence](docs/METRICS.md) | 指标来源、可信度分级与当前限制 |
+| [Validation Guide](docs/VALIDATION.md) | 测试覆盖、demo 边界与未独立验证项 |
+| [Judge One Pager](docs/JUDGE_ONE_PAGER.md) | 扩展版评审说明 |
+| [Judge Demo Script](scripts/judge-demo.sh) | 统一评审演示入口 |
+| [Living Assistant Demo Runner](docs/LIVING_ASSISTANT_DEMO_RUNNER.md) | API 路由级演示命令 |
+| [`demo-output/`](demo-output/) | 证据输出目录（运行 demo 后生成） |
+
+---
+
+## 核心能力一览（架构速览）
 
 ```
 Binance 公告/Square ──→ Signal Radar ──→ LLM Triage (87%噪音过滤)

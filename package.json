@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "test:watch": "vitest",
     "demo:run": "bash scripts/hackathon-demo.sh",
+    "demo:judge": "bash scripts/judge-demo.sh",
     "demo:discovery": "bash scripts/discovery-demo.sh",
     "demo:living-assistant": "tsx scripts/living-assistant-demo.ts",
     "demo:smoke:live": "bash scripts/execution-live-smoke.sh"
