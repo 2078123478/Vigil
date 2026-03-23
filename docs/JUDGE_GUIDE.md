@@ -121,37 +121,38 @@ cp .env.example .env
 npm run dev
 
 # Terminal B
-npm run demo:judge
+npm run demo:living-assistant
 ```
 
-This path is a quick inspection shortcut, not the definition of the product. Vigil itself is designed around persistent sensing, policy-driven interruption, paper-first execution, and replayable evidence.
+Vigil 的核心设计围绕持续感知、策略驱动的中断判断、paper-first 执行和可回放的证据链。
 
-What `demo:judge` does:
+`demo:living-assistant` 流程：
 
-1. verifies basic prerequisites,
-2. runs `demo:living-assistant` (stable local path),
-3. if API health is available, attempts `demo:discovery`,
-4. points you to evidence artifacts under `demo-output/`.
+1. 运行 fixture-driven 本地场景验证，
+2. 覆盖信号感知 → LLM 审核 → 注意力分级 → 简报生成完整链路，
+3. 输出写入 `demo-output/`。
 
-If you see `401 unauthorized`, export the same secret used by the API before rerunning:
+如需 API 模式验证，启动服务后运行 `npm run demo:discovery`。
+
+如遇 `401 unauthorized`，配置 API 密钥：
 
 ```bash
-export ALPHAOS_API_SECRET="<your API_SECRET value>"
+export API_SECRET="<your API_SECRET value>"
 ```
 
-## 5) Verification vs live boundaries (repo-validated)
+## 5) 验证路径与生产路径
 
-Treat the following as **real/external path**:
+**生产路径**（需要外部服务配置）：
 
-- `npm run demo:living-assistant -- --live` (live polling path; external feeds/config dependent),
-- execution backend integration when `ONCHAINOS_*` credentials are configured,
-- real outbound delivery when `--send` / `--call` is used with valid provider credentials.
+- `npm run demo:living-assistant -- --live`（实时信号轮询），
+- 执行后端集成（需要配置相关 credentials），
+- 真实投递（`--send` / `--call` 需要有效的 Telegram / Twilio / 阿里云凭证）。
 
-Treat the following as **verification-safe path**:
+**验证路径**（本地即可运行）：
 
-- default `npm run demo:living-assistant` (fixture-driven local scenarios),
-- `/api/v1/living-assistant/demo/:scenarioName` (demo scenario route),
-- `npm run demo:discovery` default paper approval mode (`ALPHAOS_DISCOVERY_APPROVE_MODE=paper`),
-- `npm run demo:living-assistant -- --call --demo-delivery` (simulated call delivery).
+- `npm run demo:living-assistant`（fixture-driven 本地场景），
+- `/api/v1/living-assistant/demo/:scenarioName`（场景演示路由），
+- `npm run demo:discovery`（默认 paper 审批模式），
+- `npm run demo:living-assistant -- --call --demo-delivery`（模拟电话投递）。
 
-This boundary keeps quick review credible while avoiding claims that depend on unstable live conditions.
+验证路径确保快速审阅的可信度，同时避免依赖不稳定的外部条件。

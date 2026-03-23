@@ -469,7 +469,7 @@ Why these four first:
 
 | Module need | Current code anchor | Gap |
 |------------|---------------------|-----|
-| raw opportunity scan | `src/skills/alphaos/plugins/dex-arbitrage.ts` | already present |
+| raw opportunity scan | `plugins/dex-arbitrage` | already present |
 | structured evaluation | `dex-arbitrage.ts` evaluate | already present but needs normalized reason codes |
 | planning | `dex-arbitrage.ts` plan | already present |
 | simulation | `runtime/simulator.ts` | already present |

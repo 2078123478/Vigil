@@ -53,11 +53,11 @@ scan -> evaluate -> plan -> simulate -> execute -> record -> notify
 
 对应代码：
 
-- 策略扫描 / 评估 / 规划：`src/skills/alphaos/plugins/dex-arbitrage.ts`
-- 成本模型：`src/skills/alphaos/runtime/cost-model.ts`
-- 模拟与通过判定：`src/skills/alphaos/runtime/simulator.ts`
-- 编排、去重、降级：`src/skills/alphaos/engine/alpha-engine.ts`
-- 风控门控与熔断：`src/skills/alphaos/runtime/risk-engine.ts`
+- 策略扫描 / 评估 / 规划：`plugins/dex-arbitrage`
+- 成本模型：`runtime/cost-model`
+- 模拟与通过判定：`runtime/simulator`
+- 编排、去重、降级：`engine/alpha-engine`
+- 风控门控与熔断：`runtime/risk-engine`
 
 ## `dex-arbitrage` 核心逻辑
 
