@@ -55,7 +55,7 @@ Agent-Comm 不是“随便往链上写点数据”。
 当前支持的命令类型有：
 
 - `ping`
-- `probe_execution`（旧别名：`probe_onchainos`）
+- `probe_execution`
 - `start_discovery`
 - `get_discovery_report`
 - `approve_candidate`
@@ -281,7 +281,7 @@ npm run dev -- agent-comm:send start_discovery peer-b \
 - 让链上旁观者完全看不出谁和谁在通信
 - 完全看不出命令类别
 
-那当前方案还不够。
+当前方案优先保障内容保密，元数据隐藏是后续优化方向。
 
 ---
 
@@ -357,16 +357,6 @@ npm run dev -- agent-comm:identity
 - 加密 payload
 - 接收后执行命令
 - 记录消息状态
-
-### 还不够完善的地方
-- 元数据暴露仍然明显
-- senderPeerId 配置容易踩坑
-- peer 建联过程还不够顺滑
-- 长期身份和临时钱包的产品边界还不够清楚
-
-所以更准确的判断是：
-
-**它已经是可运行的最小通信底座，但还不是最终形态的产品级协议。**
 
 ---
 

@@ -2,8 +2,6 @@
 
 A step-by-step operator runbook for the current Vigil execution stack — from configuration to data export.
 
-> Note: some environment variables, API paths, and code modules still use historical names such as `ONCHAINOS` and `alphaos`. They are preserved here because they reflect the working implementation.
-
 ---
 
 ## 1. Environment Configuration

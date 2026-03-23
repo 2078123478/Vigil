@@ -474,7 +474,7 @@ Why these four first:
 | planning | `dex-arbitrage.ts` plan | already present |
 | simulation | `runtime/simulator.ts` | already present |
 | cost breakdown | `runtime/cost-model.ts` | already present |
-| execution handoff | `runtime/onchainos-client.ts` | already present |
+| execution handoff | `runtime/execution-client.ts` | already present |
 | risk policy gates | `runtime/risk-engine.ts` | already present |
 | discovery loop | `runtime/discovery/` | already present |
 | official skill adapter layer | not formalized | missing |

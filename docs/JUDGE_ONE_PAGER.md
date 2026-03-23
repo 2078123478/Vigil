@@ -139,11 +139,9 @@ riskAdjustedNetEdgeBps >= minNetEdgeBps(mode)
 
 ## 8) 代码锚点
 
-> 说明：当前代码路径仍保留历史模块名 `alphaos` / `onchainos`，这是实现层命名，不影响对外的 Vigil 叙事。
-
 - 策略逻辑：`src/skills/alphaos/plugins/dex-arbitrage.ts`
 - 成本模型：`src/skills/alphaos/runtime/cost-model.ts`
 - 风险调整模拟：`src/skills/alphaos/runtime/simulator.ts`
 - 引擎与降级：`src/skills/alphaos/engine/alpha-engine.ts`
 - 门控与熔断：`src/skills/alphaos/runtime/risk-engine.ts`
-- 执行链路探针：`src/skills/alphaos/runtime/onchainos-client.ts`
+- 执行链路探针：`src/skills/alphaos/runtime/execution-client.ts`

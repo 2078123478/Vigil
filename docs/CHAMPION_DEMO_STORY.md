@@ -506,7 +506,7 @@ The room needs to feel the system first.
 
 ### Anti-pattern 2 - overexplaining backend names
 
-AlphaOS / OnchainOS should appear only as implementation facts, not as the emotional center of the demo.
+AlphaOS 应该只作为实现细节出现，而不是 demo 的情绪中心。
 
 ### Anti-pattern 3 - acting like voice is a gimmick
 

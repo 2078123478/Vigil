@@ -95,7 +95,7 @@ Binance 公告/Square ──→ Signal Radar ──→ LLM Triage (示例场景:
 - secp256k1-ECDH + AES-256-GCM 端到端加密
 - 完整连接生命周期：发现 → 邀请 → 信任 → 通信 → 撤销
 
-![Agent-Comm Contact Card](docs/assets/agent-comm-card-preview.png)
+![Agent-Comm 名片卡片 — 真实钱包身份](docs/assets/agent-comm-card-real.jpg)
 
 ### 2. 💰 套利执行引擎
 
@@ -104,6 +104,8 @@ Binance 公告/Square ──→ Signal Radar ──→ LLM Triage (示例场景:
 - 六维成本模型（手续费 / 滑点 / MEV / Gas / 延迟 / 尾部风险）
 - 三层风控（准入门控 → 熔断器 → 动态阈值）
 - 自动 Paper ↔ Live 模式切换
+
+![套利引擎 PnL Performance](docs/assets/pnl-performance.png)
 
 ### 3. 📡 Living Assistant - 主动感知 + 智能判断
 

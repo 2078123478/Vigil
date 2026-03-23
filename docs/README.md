@@ -1,6 +1,6 @@
 # Vigil Documentation Index
 
-This index is the fastest way to understand what Vigil already has today, what remains transitional from the original codebase, and where to go next.
+This index is the fastest way to understand what Vigil already has today and where to go next.
 
 ## Start Here
 

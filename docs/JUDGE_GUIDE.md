@@ -33,8 +33,6 @@ Vigil is a BNB ecosystem assistant runtime that:
 
 Deployment note: Vigil currently runs deeply integrated with OpenClaw as its assistant runtime. Channel binding, session orchestration, delivery, and callback handling are runtime concerns; for end users, the practical entrypoints are Telegram / voice / call rather than direct repo configuration.
 
-Implementation note: parts of the runtime still use transitional internal names (`alphaos`, `onchainos`) in code and env variables; this is expected in the current repo state.
-
 ## 2) What problem it solves
 
 In practical operations, teams face three recurring issues:
