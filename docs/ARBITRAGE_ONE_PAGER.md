@@ -214,17 +214,17 @@ That is the right standard.
 
 ---
 
-## What comes next
+## Evolution path
 
-The near-term roadmap is:
+The module is designed for incremental enhancement:
 
-1. stabilize the module contract
-2. formalize reason codes and lifecycle states
-3. map official skill inputs explicitly
-4. add a thin compatibility / enrichment adapter layer
-5. present one clean judge-facing paper-mode flow
+1. Module contract stabilization
+2. Reason codes and lifecycle state formalization
+3. Deeper official skill input mapping
+4. Compatibility / enrichment adapter layer
+5. Extended judge-facing paper-mode flows
 
-This is a realistic path from current code to a stronger product story.
+Each step builds on the existing working foundation without breaking current capabilities.
 
 ---
 

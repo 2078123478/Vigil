@@ -311,32 +311,32 @@ Future doc changes should gradually reflect this structure.
 
 ---
 
-## 8. Near-term roadmap
+## 8. Implementation phases
 
-### Phase 0 — framing alignment
+### Phase 0 — Framing alignment
 
-- define compatibility story
-- map current system into the four-layer architecture
-- stop treating backend naming as the product center
+- Compatibility story definition
+- Current system mapped into four-layer architecture
+- Product-centered naming and positioning
 
-### Phase 1 — doc and interface alignment
+### Phase 1 — Documentation and interface alignment
 
-- update README / docs index / one-pagers
-- describe modules in Binance Skills-compatible language
-- add a visible strategy roadmap section
+- README / docs index / one-pagers updated
+- Modules described in Binance Skills-compatible language
+- Strategy evolution path documented
 
-### Phase 2 — flagship strategy module
+### Phase 2 — Flagship strategy module
 
-- define arbitrage module boundaries
-- specify which official skills it consumes
-- define simulation / approval / execution path
-- prepare demo narrative around one strong flow
+- Arbitrage module boundaries defined
+- Official skills consumption mapped
+- Simulation / approval / execution path specified
+- Demo narrative around one strong flow
 
-### Phase 3 — compatibility implementation
+### Phase 3 — Compatibility implementation
 
-- add adapter layer where needed
-- normalize task contracts
-- make the module structure easier to explain and extend
+- Adapter layer integration
+- Task contract normalization
+- Module structure optimized for extensibility
 
 ---
 

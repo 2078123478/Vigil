@@ -367,14 +367,11 @@ npm run dev -- agent-comm:identity
 1. **哪些字段还能继续加密，减少元数据暴露**
 2. **怎么让用户之间建立 trusted peer 更简单、更不容易配错**
 
-下一份文档会专门分析这两个方向：
-
-- `docs/AGENT_COMM_PRIVACY_AND_TRUST_ANALYSIS.md`
+下一步可深入分析隐私与信任建联的权衡。
 
 ---
 
 ## 相关阅读
 
-- `docs/AGENT_COMM_MIN_REUSE.md`：最小联调入口
+- `docs/AGENT_COMM_V2_OPERATIONS.md`：操作指南与 CLI
 - `README.md`：项目整体入口
-- `docs/AGENT_COMM_PRIVACY_AND_TRUST_ANALYSIS.md`：隐私与建联便利性分析

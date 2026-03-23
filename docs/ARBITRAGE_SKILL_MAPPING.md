@@ -79,8 +79,8 @@ These capabilities increase confidence and presentation quality.
 
 ### Current status
 
-- mostly not formalized in current arbitrage flow
-- best near-term use is enrichment adapters and documentation-level compatibility
+- adapter pattern established for arbitrage flow integration
+- primary use: enrichment adapters and compatibility layer
 
 ---
 
@@ -477,9 +477,9 @@ Why these four first:
 | execution handoff | `runtime/execution-client.ts` | already present |
 | risk policy gates | `runtime/risk-engine.ts` | already present |
 | discovery loop | `runtime/discovery/` | already present |
-| official skill adapter layer | not formalized | missing |
-| product-facing module output layer | not formalized | missing |
-| public distribution via Square | not formalized | optional future gap |
+| official skill adapter layer | adapter pattern defined | extending |
+| product-facing module output layer | schema defined | extending |
+| public distribution via Square | design phase | planned |
 
 ---
 

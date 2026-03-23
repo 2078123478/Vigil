@@ -11,9 +11,8 @@ This guide describes the product-default Agent-Comm v2 flow in this repo:
 4. send business commands after trust exists
 
 Reference contracts:
-- Design: `docs/AGENT_COMM_V2_DESIGN.md`
-- Typed-data contracts: `docs/AGENT_COMM_V2_ARTIFACT_CONTRACTS.md`
-- Card packaging: `docs/AGENT_COMM_V2_CARD_PACKAGING.md`
+- Protocol overview: `docs/AGENT_COMM_EXPLAINED.md`
+- Operations: this document
 
 ## Roles
 
@@ -269,7 +268,7 @@ Payload format:
 {"text":"[agent-comm] Inbound <type> from <address> (tx: <hash>...)","mode":"now"}
 ```
 
-For OpenClaw integration details and end-to-end examples, see `docs/AGENT_COMM_PRODUCTION_DEPLOYMENT.md` (`Webhook Notification (Optional)`).
+For integration details, see `docs/AGENT_COMM_EXPLAINED.md`.
 
 ## Performance Notes
 
@@ -281,4 +280,4 @@ For OpenClaw integration details and end-to-end examples, see `docs/AGENT_COMM_P
 ## Related files
 - Demo walkthrough: `scripts/agent-comm-demo.sh`
 - Demo notes: `scripts/agent-comm-demo.md`
-- Legacy/manual reference: `docs/AGENT_COMM_MIN_REUSE.md`
+- Protocol overview: `docs/AGENT_COMM_EXPLAINED.md`

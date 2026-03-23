@@ -198,26 +198,26 @@ The architecture can evolve toward multiple BNB Chain-native directions:
 
 ---
 
-## Near-term roadmap toward stronger BNB Chain alignment
+## BNB Chain 生态对齐路径
 
-### Phase 1 — Narrative and developer clarity
+### Phase 1 — 叙事与开发者体验
 
-- finish outward-facing documentation cleanup
-- make BNB Chain positioning obvious from the first screen
-- provide simpler evaluator and partner reading paths
+- 面向评委和合作伙伴的文档体系
+- BNB Chain 定位在首屏清晰可见
+- 简洁的评审与合作阅读路径
 
-### Phase 2 — BNB Chain-friendly defaults
+### Phase 2 — BNB Chain 原生体验
 
-- shift examples and demos toward BNB Chain contexts
-- refine terminology away from legacy naming
-- package the most compelling builder flows into clearer entrypoints
+- 示例和演示围绕 BNB Chain 场景构建
+- 统一术语体系
+- 核心 builder 流程打包为清晰入口
 
-### Phase 3 — Ecosystem-grade agent infrastructure
+### Phase 3 — 生态级 Agent 基础设施
 
-- richer contact-card / agent discovery workflows
-- stronger multi-agent operational patterns
-- standardized trust, permissioning, and reporting surfaces
-- more reusable skills for real BNB Chain workflows
+- 丰富的名片发现与 Agent 协作工作流
+- 多 Agent 协同运作模式
+- 标准化信任、权限与报告层
+- 面向真实 BNB Chain 场景的可复用 Skills
 
 ---
 
@@ -245,8 +245,7 @@ If you want to evaluate the project quickly, read these next:
 
 1. [README](../README.md)
 2. [Champion Demo Story](./CHAMPION_DEMO_STORY.md)
-3. [Living Assistant MVP Plan](./LIVING_ASSISTANT_MVP_PLAN.md)
-4. [Agent-Comm One Pager](./AGENT_COMM_ONE_PAGER.md)
-5. [Judge One-Pager](./JUDGE_ONE_PAGER.md)
-6. [AlphaOS Operations Guide](./ALPHAOS_OPERATIONS.md)
-7. [Agent-Comm V2 Design](./AGENT_COMM_V2_DESIGN.md)
+3. [Judge One-Pager](./JUDGE_ONE_PAGER.md)
+4. [Judge Guide](./JUDGE_GUIDE.md)
+5. [Agent-Comm 协议说明](./AGENT_COMM_EXPLAINED.md)
+6. [BNB Skills Compatibility Plan](./BNB_SKILLS_COMPATIBILITY_PLAN.md)

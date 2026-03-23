@@ -57,7 +57,7 @@ Vigil addresses this with a single loop: `sense -> judge -> brief/act`, plus pap
 - For approve routes, inspect `skillAttribution` (`requiredSkillsUsed`, `enrichmentSkillsUsed`, `distributionSkillsUsed`, `skillSources`) and compare with `docs/official-skills-manifest.json`.
 
 3. **Trust and communication layer (Agent-Comm)**
-- Review `scripts/agent-comm-demo.sh` and `docs/AGENT_COMM_ONE_PAGER.md`.
+- Review `scripts/agent-comm-demo.sh` and `docs/AGENT_COMM_EXPLAINED.md`.
 - Look for wallet-based identity, signed contact cards, and encrypted message path.
 
 ## 4) 5-minute verification path
